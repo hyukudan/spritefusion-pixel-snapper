@@ -19,6 +19,65 @@ const state = {
 
 const PASS_THROUGH_K = 0xffff_ffff;
 
+const BUILTIN_PRESETS = () => ({
+  Default: {
+    k: parseInt(els.kSlider?.value || "16", 10) || 16,
+    seed: els.seed?.value || "42",
+    iterations: els.iterations?.value || "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette: "",
+  },
+  "Game Boy (DMG)": {
+    k: 4,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "center",
+    edgeWeight: "1",
+    palette: "#0F380F #306230 #8BAC0F #9BBC0F",
+  },
+  "Game Boy Pocket": {
+    k: 4,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "center",
+    edgeWeight: "1",
+    palette: "#000000 #555555 #AAAAAA #FFFFFF",
+  },
+  "CGA (cyan/magenta)": {
+    k: 4,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette: "#000000 #55FFFF #FF55FF #FFFFFF",
+  },
+  "EGA 16": {
+    k: 16,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette:
+      "#000000 #0000AA #00AA00 #00AAAA #AA0000 #AA00AA #AA5500 #AAAAAA #555555 #5555FF #55FF55 #55FFFF #FF5555 #FF55FF #FFFF55 #FFFFFF",
+  },
+  "PICO-8": {
+    k: 16,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette:
+      "#000000 #1D2B53 #7E2553 #008751 #AB5236 #5F574F #C2C3C7 #FFF1E8 #FF004D #FFA300 #FFEC27 #00E436 #29ADFF #83769C #FF77A8 #FFCCAA",
+  },
+});
+
 const els = {
   drop: document.querySelector("[data-drop]"),
   fileInput: document.getElementById("file"),
@@ -768,25 +827,15 @@ const setActiveFromQueue = async (idx) => {
 const presetsKey = "ps_presets";
 
 const loadPresets = () => {
-  let presets = {};
+  let presets = BUILTIN_PRESETS();
   try {
     const raw = localStorage.getItem(presetsKey);
     if (raw) {
-      presets = JSON.parse(raw);
+      const stored = JSON.parse(raw);
+      presets = { ...presets, ...stored };
     }
   } catch (_) {
-    presets = {};
-  }
-  if (Object.keys(presets).length === 0) {
-    presets["Default"] = {
-      k: Number(els.kSlider.value),
-      seed: els.seed.value,
-      iterations: els.iterations.value,
-      quantize: els.quantizeToggle.checked,
-      resampleMode: els.resampleMode.value,
-      edgeWeight: els.edgeWeight.value,
-      palette: "",
-    };
+    presets = BUILTIN_PRESETS();
   }
   return presets;
 };
@@ -811,9 +860,10 @@ const applyPreset = (name) => {
   const presets = loadPresets();
   const preset = presets[name];
   if (!preset) return;
-  els.kSlider.value = preset.k;
-  els.kInput.value = preset.k;
-  els.kValue.textContent = preset.k;
+  const k = preset.k || 16;
+  els.kSlider.value = k;
+  els.kInput.value = k;
+  els.kValue.textContent = k;
   els.seed.value = preset.seed;
   els.iterations.value = preset.iterations;
   els.quantizeToggle.checked = preset.quantize;
@@ -821,6 +871,7 @@ const applyPreset = (name) => {
   els.edgeWeight.value = preset.edgeWeight || "1";
   if (preset.palette !== undefined) {
     els.paletteInput.value = preset.palette;
+    els.applyPalette.disabled = false;
   }
   refreshResampleUI();
 };
@@ -845,7 +896,8 @@ const handleSavePreset = () => {
 
 const handleDeletePreset = () => {
   const name = els.presetSelect.value;
-  if (!name || name === "Default") return;
+  const builtins = Object.keys(BUILTIN_PRESETS());
+  if (!name || builtins.includes(name)) return;
   const presets = loadPresets();
   delete presets[name];
   savePresets(presets);
@@ -919,7 +971,7 @@ const computeDiffMask = async () => {
 };
 
 const updateLoupe = (event) => {
-  if (!els.loupe || els.loupe.hidden || !state.outputUrl) return;
+  if (!els.loupe || !els.loupeToggle.checked || !state.outputUrl) return;
   const img = els.compareOverlay;
   if (!img || !img.naturalWidth) return;
   const rect = els.compare.getBoundingClientRect();
@@ -955,6 +1007,13 @@ const updateLoupe = (event) => {
     els.loupe.width,
     els.loupe.height
   );
+  const pad = 12;
+  const lw = els.loupe.width;
+  const lh = els.loupe.height;
+  const left = Math.min(window.innerWidth - lw / 2 - pad, Math.max(lw / 2 + pad, event.clientX + 20));
+  const top = Math.min(window.innerHeight - lh / 2 - pad, Math.max(lh / 2 + pad, event.clientY + 20));
+  els.loupe.style.left = `${left}px`;
+  els.loupe.style.top = `${top}px`;
   els.loupe.hidden = false;
 };
 
@@ -1253,9 +1312,15 @@ const wireUI = () => {
   els.applyPalette.addEventListener("click", () => {
     setStatus(t("custom_palette_applied"));
   });
+  els.paletteInput.addEventListener("input", (e) => {
+    els.applyPalette.disabled = !(e.target.value || "").trim().length;
+  });
   els.diffToggle.addEventListener("change", () => {
     if (els.diffOverlay) {
       els.diffOverlay.hidden = !els.diffToggle.checked;
+    }
+    if (els.diffToggle.checked && state.outputUrl) {
+      computeDiffMask();
     }
   });
   els.compare.addEventListener("mousemove", updateLoupe);
@@ -1280,6 +1345,9 @@ const wireUI = () => {
   });
   els.exportPalette.addEventListener("click", exportPaletteText);
   refreshPresetSelect();
+  if (els.presetSelect.value) {
+    applyPreset(els.presetSelect.value);
+  }
   refreshResampleUI();
   applyZoom(els.zoom.value);
   toggleGrid(els.gridToggle.checked);
