@@ -68,6 +68,12 @@ wasm-pack build --target web --out-dir pkg --release
 
 Then use the WASM module in your project.
 
+### 🖼️ Web playground (local)
+
+- Build the wasm bundle (once): `wasm-pack build --target web --out-dir pkg --release`
+- Serve the repo root (`python -m http.server 8000`) and open `http://localhost:8000/web/`
+- Drop one or many PNG/JPEG, adjust k-colors/seed/iterations, compare side-by-side or with a slider, toggle grid + zoom, see palette/stats, and download the snapped result (batch to ZIP supported). Everything runs in-browser; no uploads.
+
 ## Acknowledgments
 
 Pixel Snapper is a [Sprite Fusion](https://spritefusion.com) project. Sprite Fusion is a free, web-based tilemap editor for game developers supporting a wide range of engines including Unity, Godot, Defold, and GB Studio.

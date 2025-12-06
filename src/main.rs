@@ -107,7 +107,11 @@ fn process_image_bytes_common(input_bytes: &[u8], config: Option<Config>) -> Res
 
     let rgb_img = img.to_rgb8();
 
-    let quantized_img = quantize_image(&rgb_img, &config)?;
+    let quantized_img = if config.k_colors == usize::MAX {
+        rgb_img.clone()
+    } else {
+        quantize_image(&rgb_img, &config)?
+    };
     let (profile_x, profile_y) = compute_profiles(&quantized_img)?;
 
     // Estimate step sizes
@@ -150,6 +154,29 @@ pub fn process_image(
     input_bytes: &[u8],
     k_colors: Option<u32>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
+    let config = build_config(k_colors, None, None)?;
+    process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
+}
+
+/// WASM entry point with extra tunables
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn process_image_with(
+    input_bytes: &[u8],
+    k_colors: Option<u32>,
+    k_seed: Option<u64>,
+    max_kmeans_iterations: Option<u32>,
+) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
+    let config = build_config(k_colors, k_seed, max_kmeans_iterations)?;
+    process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn build_config(
+    k_colors: Option<u32>,
+    k_seed: Option<u64>,
+    max_kmeans_iterations: Option<u32>,
+) -> std::result::Result<Config, wasm_bindgen::JsValue> {
     let mut config = Config::default();
     if let Some(k) = k_colors {
         if k == 0 {
@@ -157,11 +184,21 @@ pub fn process_image(
                 "k_colors must be greater than 0",
             ));
         }
-        config.k_colors = k as usize;
+        // Use usize::MAX as sentinel to mean "passthrough/no quantization"
+        config.k_colors = if k == u32::MAX { usize::MAX } else { k as usize };
     }
-
-    process_image_bytes_common(input_bytes, Some(config))
-        .map_err(|e| wasm_bindgen::JsValue::from(e))
+    if let Some(seed) = k_seed {
+        config.k_seed = seed;
+    }
+    if let Some(iter) = max_kmeans_iterations {
+        if iter == 0 {
+            return Err(wasm_bindgen::JsValue::from_str(
+                "max_kmeans_iterations must be greater than 0",
+            ));
+        }
+        config.max_kmeans_iterations = iter as usize;
+    }
+    Ok(config)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -229,6 +266,9 @@ fn quantize_image(img: &RgbImage, config: &Config) -> Result<RgbImage> {
         return Err(PixelSnapperError::InvalidInput(
             "Number of colors must be greater than 0".to_string(),
         ));
+    }
+    if config.k_colors == usize::MAX {
+        return Ok(img.clone());
     }
 
     let pixels_f32: Vec<[f32; 3]> = img
@@ -755,9 +795,10 @@ fn resample(img: &RgbImage, cols: &[usize], rows: &[usize]) -> Result<RgbImage> 
         ));
     }
 
-    let out_w = (cols.len().max(1) - 1) as u32;
-    let out_h = (rows.len().max(1) - 1) as u32;
-    let mut final_img = ImageBuffer::new(out_w, out_h);
+    // First compute a representative color per grid cell (same as before)
+    let cells_w = cols.len() - 1;
+    let cells_h = rows.len() - 1;
+    let mut cell_colors = vec![vec!([0u8; 3]; cells_w); cells_h];
 
     for (y_i, w_y) in rows.windows(2).enumerate() {
         for (x_i, w_x) in cols.windows(2).enumerate() {
@@ -797,8 +838,30 @@ fn resample(img: &RgbImage, cols: &[usize], rows: &[usize]) -> Result<RgbImage> 
                 best_pixel = winner.0;
             }
 
-            final_img.put_pixel(x_i as u32, y_i as u32, Rgb(best_pixel));
+            cell_colors[y_i][x_i] = best_pixel;
         }
     }
+
+    // Then expand each cell color back to the original resolution so the output
+    // matches the input dimensions.
+    let mut final_img = ImageBuffer::new(img.width(), img.height());
+    let max_w = img.width() as usize;
+    let max_h = img.height() as usize;
+
+    for (y_i, w_y) in rows.windows(2).enumerate() {
+        let ys = w_y[0];
+        let ye = w_y[1].min(max_h);
+        for (x_i, w_x) in cols.windows(2).enumerate() {
+            let xs = w_x[0];
+            let xe = w_x[1].min(max_w);
+            let color = cell_colors[y_i][x_i];
+            for y in ys..ye {
+                for x in xs..xe {
+                    final_img.put_pixel(x as u32, y as u32, Rgb(color));
+                }
+            }
+        }
+    }
+
     Ok(final_img)
 }
