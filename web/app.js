@@ -230,6 +230,7 @@ const els = {
   targetWidthLabel: document.getElementById("targetWidthLabel"),
   targetHeightLabel: document.getElementById("targetHeightLabel"),
   gridStep: document.querySelector('[data-grid="snap"]'),
+  gridCanvas: document.getElementById("gridCanvas"),
 };
 
 const translations = {
@@ -889,6 +890,12 @@ const clearOutputPreview = () => {
   }
   els.outputPreview.hidden = true;
   els.outputPlaceholder.hidden = false;
+  // Clear grid canvas
+  if (els.gridCanvas) {
+    els.gridCanvas.hidden = true;
+    const ctx = els.gridCanvas.getContext("2d");
+    ctx.clearRect(0, 0, els.gridCanvas.width, els.gridCanvas.height);
+  }
   els.outputMeta.textContent = t("output_hint");
   els.outputPlaceholder.textContent = t("output_placeholder");
   els.download.setAttribute("disabled", "true");
@@ -930,6 +937,10 @@ const toggleGrid = (on) => {
   if (snapGrid) {
     snapGrid.classList.toggle("grid-on", on);
   }
+  // Redraw canvas grid
+  if (state.gridMeta) {
+    setGridOverlay(state.gridMeta);
+  }
 };
 
 const renderQueue = () => {
@@ -959,20 +970,69 @@ const setActiveFromQueue = async (idx) => {
 };
 
 const setGridOverlay = (meta) => {
-  if (!meta || !els.outputPreview || !els.gridStep) return;
+  if (!meta || !els.outputPreview || !els.gridStep || !els.gridCanvas) return;
   const img = els.outputPreview;
   const rect = img.getBoundingClientRect();
   const containerRect = els.gridStep.getBoundingClientRect();
-  const cols = meta.cols || 1;
-  const rows = meta.rows || 1;
-  const stepX = `${rect.width / cols}px`;
-  const stepY = `${rect.height / rows}px`;
-  const offsetX = (containerRect.width - rect.width) / 2;
-  const offsetY = (containerRect.height - rect.height) / 2;
-  els.gridStep.style.setProperty("--grid-step-x", stepX);
-  els.gridStep.style.setProperty("--grid-step-y", stepY);
-  els.gridStep.style.setProperty("--grid-offset-x", `${offsetX}px`);
-  els.gridStep.style.setProperty("--grid-offset-y", `${offsetY}px`);
+
+  // Calculate actual rendered image size considering object-fit: contain
+  const naturalW = img.naturalWidth || 1;
+  const naturalH = img.naturalHeight || 1;
+  const elementW = rect.width;
+  const elementH = rect.height;
+  const scaleX = elementW / naturalW;
+  const scaleY = elementH / naturalH;
+  const scale = Math.min(scaleX, scaleY);
+  const renderedW = naturalW * scale;
+  const renderedH = naturalH * scale;
+
+  // Calculate offset from container edge to rendered image edge
+  const imgOffsetX = (elementW - renderedW) / 2;
+  const imgOffsetY = (elementH - renderedH) / 2;
+  const offsetX = (containerRect.width - elementW) / 2 + imgOffsetX;
+  const offsetY = (containerRect.height - elementH) / 2 + imgOffsetY;
+
+  // Set canvas size to match container
+  const canvas = els.gridCanvas;
+  canvas.width = containerRect.width;
+  canvas.height = containerRect.height;
+  canvas.style.width = `${containerRect.width}px`;
+  canvas.style.height = `${containerRect.height}px`;
+
+  // Draw grid lines at exact cut positions
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!els.gridToggle.checked) {
+    canvas.hidden = true;
+    return;
+  }
+  canvas.hidden = false;
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.lineWidth = 1;
+
+  const colCuts = meta.colCuts || [];
+  const rowCuts = meta.rowCuts || [];
+
+  // Draw vertical lines at column cut positions
+  ctx.beginPath();
+  for (const cut of colCuts) {
+    const x = offsetX + (cut / naturalW) * renderedW;
+    ctx.moveTo(x, offsetY);
+    ctx.lineTo(x, offsetY + renderedH);
+  }
+  ctx.stroke();
+
+  // Draw horizontal lines at row cut positions
+  ctx.beginPath();
+  for (const cut of rowCuts) {
+    const y = offsetY + (cut / naturalH) * renderedH;
+    ctx.moveTo(offsetX, y);
+    ctx.lineTo(offsetX + renderedW, y);
+  }
+  ctx.stroke();
+
   state.gridMeta = meta;
 };
 
@@ -1282,6 +1342,8 @@ const processImage = async () => {
       cellH: Number(result[4]),
       outW: Number(result[5]),
       outH: Number(result[6]),
+      colCuts: Array.from(result[7] || []),
+      rowCuts: Array.from(result[8] || []),
     };
     state.gridMeta = meta;
 

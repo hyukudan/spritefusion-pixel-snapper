@@ -120,6 +120,8 @@ pub struct GridInfo {
     pub cell_h: f64,
     pub width: u32,
     pub height: u32,
+    pub col_cuts: Vec<usize>,
+    pub row_cuts: Vec<usize>,
 }
 
 /// CLI entry point
@@ -195,6 +197,8 @@ fn process_image_bytes_with_info(
         cell_h: output_img.height() as f64 / row_cuts.len().max(1) as f64,
         width: output_img.width(),
         height: output_img.height(),
+        col_cuts,
+        row_cuts,
     };
 
     Ok((output_bytes, meta))
@@ -268,6 +272,17 @@ pub fn process_image_with_meta(
     arr.push(&wasm_bindgen::JsValue::from(info.cell_h));
     arr.push(&wasm_bindgen::JsValue::from(info.width));
     arr.push(&wasm_bindgen::JsValue::from(info.height));
+    // Add cut position arrays for precise grid overlay
+    let col_cuts_js = js_sys::Array::new();
+    for &cut in &info.col_cuts {
+        col_cuts_js.push(&wasm_bindgen::JsValue::from(cut as u32));
+    }
+    arr.push(&col_cuts_js);
+    let row_cuts_js = js_sys::Array::new();
+    for &cut in &info.row_cuts {
+        row_cuts_js.push(&wasm_bindgen::JsValue::from(cut as u32));
+    }
+    arr.push(&row_cuts_js);
     Ok(arr)
 }
 
