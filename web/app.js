@@ -1,4 +1,4 @@
-import initWasm, { process_image_with } from "../pkg/spritefusion_pixel_snapper.js";
+import initWasm, { process_image_with, process_image_with_meta } from "../pkg/spritefusion_pixel_snapper.js";
 
 const state = {
   wasmReady: false,
@@ -521,6 +521,8 @@ const translations = {
     palette_imported: "パレットを読み込みました。",
     target_width: "目標幅",
     target_height: "目標高さ",
+    target_width: "目標幅",
+    target_height: "目標高さ",
     diff_toggle: "差分マスク表示",
     diff_info: "差分: {pct}% のピクセルが変更",
     loupe_label: "ルーペ (1:1)",
@@ -699,6 +701,8 @@ const applyTranslations = () => {
   if (els.edgeWeight) {
     els.edgeWeight.title = t("edge_weight_help");
   }
+  set(els.targetWidthLabel, "target_width");
+  set(els.targetHeightLabel, "target_height");
   set(els.presetLabel, "preset_label");
   set(els.applyPreset, "preset_apply");
   set(els.savePreset, "preset_save");
