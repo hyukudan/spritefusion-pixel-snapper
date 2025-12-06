@@ -12,6 +12,7 @@ const state = {
   outputStats: null,
   lastDims: null,
   diffRatio: null,
+  gridMeta: null,
   processing: false,
   batchProcessing: false,
   lang: (typeof localStorage !== "undefined" && localStorage.getItem("ps_lang")) || "en",
@@ -957,6 +958,16 @@ const setActiveFromQueue = async (idx) => {
   renderQueue();
 };
 
+const setGridOverlay = (meta) => {
+  if (!meta) return;
+  const stepX = `${meta.cellW}px`;
+  const stepY = `${meta.cellH}px`;
+  document.querySelectorAll("[data-frame], .compare").forEach((el) => {
+    el.style.setProperty("--grid-step-x", stepX);
+    el.style.setProperty("--grid-step-y", stepY);
+  });
+};
+
 const presetsKey = "ps_presets";
 
 const loadPresets = () => {
@@ -1225,35 +1236,47 @@ const processImage = async () => {
   setProcessing(true);
   try {
     const quantize = els.quantizeToggle.checked;
-  const paletteText = (els.paletteInput.value || "").trim();
-  const customPalette = parsePaletteText(paletteText);
-  let inputBytes = state.inputBytes;
-  let k = quantize
-    ? parseInt(els.kSlider.value, 10)
-    : customPalette.length > 0
-      ? Math.max(1, customPalette.length)
-      : PASS_THROUGH_K; // passthrough
-  if (customPalette.length) {
-    // Map to the chosen palette first and skip further k-means inside WASM to preserve exact colors.
-    inputBytes = await paletteQuantize(state.inputBytes, customPalette);
-    k = PASS_THROUGH_K;
-  }
-  const seed = BigInt(els.seed.value || "0");
-  const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
-  const resampleMode = els.resampleMode.value;
-  const edgeWeight = parseFloat(els.edgeWeight.value || "0");
-  const targetWidth = parseInt(els.targetWidth.value, 10) || undefined;
-  const targetHeight = parseInt(els.targetHeight.value, 10) || undefined;
-  const outputBytes = process_image_with(
-    inputBytes,
-    k,
-    seed,
-    iterations,
-    resampleMode,
-    edgeWeight,
-    targetWidth,
-    targetHeight
-  );
+    const paletteText = (els.paletteInput.value || "").trim();
+    const customPalette = parsePaletteText(paletteText);
+    let inputBytes = state.inputBytes;
+    let k = quantize
+      ? parseInt(els.kSlider.value, 10)
+      : customPalette.length > 0
+        ? Math.max(1, customPalette.length)
+        : PASS_THROUGH_K; // passthrough
+    if (customPalette.length) {
+      // Map to the chosen palette first and skip further k-means inside WASM to preserve exact colors.
+      inputBytes = await paletteQuantize(state.inputBytes, customPalette);
+      k = PASS_THROUGH_K;
+    }
+    const seed = BigInt(els.seed.value || "0");
+    const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
+    const resampleMode = els.resampleMode.value;
+    const edgeWeight = parseFloat(els.edgeWeight.value || "0");
+    const targetWidth = parseInt(els.targetWidth.value, 10) || undefined;
+    const targetHeight = parseInt(els.targetHeight.value, 10) || undefined;
+
+    const result = process_image_with_meta(
+      inputBytes,
+      k,
+      seed,
+      iterations,
+      resampleMode,
+      edgeWeight,
+      targetWidth,
+      targetHeight
+    );
+    const outputBytes = new Uint8Array(result[0]);
+    const meta = {
+      cols: Number(result[1]),
+      rows: Number(result[2]),
+      cellW: Number(result[3]),
+      cellH: Number(result[4]),
+      outW: Number(result[5]),
+      outH: Number(result[6]),
+    };
+    state.gridMeta = meta;
+
     const blob = new Blob([outputBytes], { type: "image/png" });
     if (state.outputUrl) {
       URL.revokeObjectURL(state.outputUrl);
@@ -1284,6 +1307,10 @@ const processImage = async () => {
       state.lastDims = { width: img.naturalWidth, height: img.naturalHeight };
     }
 
+    if (meta.cellW && meta.cellH) {
+      setGridOverlay(meta);
+    }
+
     els.compareBase.src = state.inputUrl;
     els.compareOverlay.src = state.outputUrl;
     els.compare.hidden = false;
@@ -1307,7 +1334,10 @@ const processImage = async () => {
     els.download.removeAttribute("disabled");
 
     const kDisplay = kLabel;
-    setStatus(t("done_message", { k: kDisplay, seed, iter: iterations }));
+    const cellWarn =
+      meta.cellW && meta.cellH && (Math.abs(meta.cellW - Math.round(meta.cellW)) > 0.01 || Math.abs(meta.cellH - Math.round(meta.cellH)) > 0.01);
+    const warnMsg = cellWarn ? " (grid may be off due to non-integer scaling)" : "";
+    setStatus(t("done_message", { k: kDisplay, seed, iter: iterations }) + warnMsg);
   } catch (err) {
     console.error(err);
     setStatus(t("error_processing", { err: err?.message || err }));
