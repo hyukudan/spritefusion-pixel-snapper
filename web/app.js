@@ -187,8 +187,6 @@ const clearOutputPreview = () => {
   state.outputStats = null;
   renderStats(els.outputStats, els.outputStatsHint, null);
   renderPalette([]);
-  els.inputPlaceholder.hidden = false;
-  els.inputPreview.hidden = true;
 };
 
 const refreshButtons = () => {
