@@ -229,6 +229,7 @@ const els = {
   targetHeight: document.getElementById("targetHeight"),
   targetWidthLabel: document.getElementById("targetWidthLabel"),
   targetHeightLabel: document.getElementById("targetHeightLabel"),
+  gridStep: document.querySelector('[data-grid="snap"]'),
 };
 
 const translations = {
@@ -958,22 +959,21 @@ const setActiveFromQueue = async (idx) => {
 };
 
 const setGridOverlay = (meta) => {
-  if (!meta || !els.outputPreview) return;
-  const container = document.querySelector('[data-grid="snap"]');
-  if (!container) return;
+  if (!meta || !els.outputPreview || !els.gridStep) return;
   const img = els.outputPreview;
+  const rect = img.getBoundingClientRect();
+  const containerRect = els.gridStep.getBoundingClientRect();
   const cols = meta.cols || 1;
   const rows = meta.rows || 1;
-  const displayW = img.clientWidth || img.naturalWidth;
-  const displayH = img.clientHeight || img.naturalHeight;
-  const stepX = `${displayW / cols}px`;
-  const stepY = `${displayH / rows}px`;
-  const offsetX = ((container.clientWidth || displayW) - displayW) / 2;
-  const offsetY = ((container.clientHeight || displayH) - displayH) / 2;
-  container.style.setProperty("--grid-step-x", stepX);
-  container.style.setProperty("--grid-step-y", stepY);
-  container.style.setProperty("--grid-offset-x", `${offsetX}px`);
-  container.style.setProperty("--grid-offset-y", `${offsetY}px`);
+  const stepX = `${rect.width / cols}px`;
+  const stepY = `${rect.height / rows}px`;
+  const offsetX = (containerRect.width - rect.width) / 2;
+  const offsetY = (containerRect.height - rect.height) / 2;
+  els.gridStep.style.setProperty("--grid-step-x", stepX);
+  els.gridStep.style.setProperty("--grid-step-y", stepY);
+  els.gridStep.style.setProperty("--grid-offset-x", `${offsetX}px`);
+  els.gridStep.style.setProperty("--grid-offset-y", `${offsetY}px`);
+  state.gridMeta = meta;
 };
 
 const presetsKey = "ps_presets";
@@ -1293,7 +1293,11 @@ const processImage = async () => {
     const img = els.outputPreview;
     const kLabel = k === PASS_THROUGH_K ? t("pass_through") : k;
     const applyMeta = () => {
-      els.outputMeta.textContent = `${img.naturalWidth}x${img.naturalHeight} · k=${kLabel} · seed=${seed} · iter=${iterations}`;
+      const gridStr =
+        meta && meta.cellW && meta.cellH
+          ? ` · grid ${Math.round(meta.cellW)}x${Math.round(meta.cellH)} (${meta.cols}x${meta.rows})`
+          : "";
+      els.outputMeta.textContent = `${img.naturalWidth}x${img.naturalHeight} · k=${kLabel} · seed=${seed} · iter=${iterations}${gridStr}`;
     };
 
     const waitForImage = new Promise((resolve) => {
@@ -1487,6 +1491,7 @@ const wireUI = () => {
   });
   els.zoom.addEventListener("input", (e) => {
     applyZoom(e.target.value);
+    if (state.gridMeta) setGridOverlay(state.gridMeta);
   });
   els.gridToggle.addEventListener("change", (e) => {
     toggleGrid(e.target.checked);
