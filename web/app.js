@@ -922,7 +922,7 @@ const applyPreset = (name) => {
   els.kValue.textContent = k;
   els.seed.value = preset.seed;
   els.iterations.value = preset.iterations;
-  els.quantizeToggle.checked = preset.quantize;
+  els.quantizeToggle.checked = preset.quantize !== false;
   els.resampleMode.value = preset.resampleMode || "majority";
   els.edgeWeight.value = preset.edgeWeight || "1";
   if (preset.palette !== undefined) {
@@ -1149,25 +1149,23 @@ const processImage = async () => {
   try {
     const quantize = els.quantizeToggle.checked;
     const paletteText = (els.paletteInput.value || "").trim();
-    const customPalette = parsePaletteText(paletteText);
-    let k = quantize
-      ? parseInt(els.kSlider.value, 10)
-      : customPalette.length > 0
-        ? Math.max(1, customPalette.length)
-        : PASS_THROUGH_K; // passthrough
-    if (customPalette.length && quantize) {
-      // If a custom palette is provided and quantization is on, force k to palette size
-      k = customPalette.length;
-    }
-    const seed = BigInt(els.seed.value || "0");
-    const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
-    const resampleMode = els.resampleMode.value;
-    const edgeWeight = parseFloat(els.edgeWeight.value || "0");
-    const inputBytes =
-      customPalette.length && quantize
-        ? await paletteQuantize(state.inputBytes, customPalette)
-        : state.inputBytes;
-    const outputBytes = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
+  const customPalette = parsePaletteText(paletteText);
+  let inputBytes = state.inputBytes;
+  let k = quantize
+    ? parseInt(els.kSlider.value, 10)
+    : customPalette.length > 0
+      ? Math.max(1, customPalette.length)
+      : PASS_THROUGH_K; // passthrough
+  if (customPalette.length) {
+    // Map to the chosen palette first and skip further k-means inside WASM to preserve exact colors.
+    inputBytes = await paletteQuantize(state.inputBytes, customPalette);
+    k = PASS_THROUGH_K;
+  }
+  const seed = BigInt(els.seed.value || "0");
+  const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
+  const resampleMode = els.resampleMode.value;
+  const edgeWeight = parseFloat(els.edgeWeight.value || "0");
+  const outputBytes = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
     const blob = new Blob([outputBytes], { type: "image/png" });
     if (state.outputUrl) {
       URL.revokeObjectURL(state.outputUrl);
@@ -1250,12 +1248,12 @@ const processBatch = async () => {
   try {
     const quantize = els.quantizeToggle.checked;
     const paletteText = (els.paletteInput.value || "").trim();
-    const customPalette = parsePaletteText(paletteText);
-    const k = quantize
-      ? parseInt(els.kSlider.value, 10)
-      : customPalette.length > 0
-        ? Math.max(1, customPalette.length)
-        : PASS_THROUGH_K;
+  const customPalette = parsePaletteText(paletteText);
+  const k = quantize
+    ? parseInt(els.kSlider.value, 10)
+    : customPalette.length > 0
+      ? Math.max(1, customPalette.length)
+      : PASS_THROUGH_K;
     const seed = BigInt(els.seed.value || "0");
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
     const resampleMode = els.resampleMode.value;
@@ -1265,7 +1263,7 @@ const processBatch = async () => {
     for (const item of state.queue) {
       const bytes = new Uint8Array(await item.file.arrayBuffer());
       const inputBytes =
-        customPalette.length && quantize ? await paletteQuantize(bytes, customPalette) : bytes;
+        customPalette.length ? await paletteQuantize(bytes, customPalette) : bytes;
       const result = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
       const base = item.file.name.replace(/\.[^.]+$/, "");
       zip.file(`${base}_snapped.png`, result);
@@ -1392,6 +1390,7 @@ const wireUI = () => {
   els.applyPreset.addEventListener("click", () => applyPreset(els.presetSelect.value));
   els.savePreset.addEventListener("click", handleSavePreset);
   els.deletePreset.addEventListener("click", handleDeletePreset);
+  els.presetSelect.addEventListener("change", () => applyPreset(els.presetSelect.value));
   els.importPalette.addEventListener("click", () => els.importPaletteFile.click());
   els.importPaletteFile.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
