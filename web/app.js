@@ -542,6 +542,59 @@ const updateDiffInfo = () => {
   els.diffInfo.textContent = t("diff_info", { pct });
 };
 
+const paletteToRgb = (palette) =>
+  palette.map((hex) => {
+    const h = hex.replace("#", "");
+    return [
+      parseInt(h.slice(0, 2), 16),
+      parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16),
+    ];
+  });
+
+const paletteQuantize = async (bytes, palette) => {
+  if (!palette.length) return bytes;
+  const rgbPalette = paletteToRgb(palette);
+  const blob = new Blob([bytes]);
+  const img = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  let idx = 0;
+  while (idx < data.length) {
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    let best = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < rgbPalette.length; i++) {
+      const [pr, pg, pb] = rgbPalette[i];
+      const dr = r - pr;
+      const dg = g - pg;
+      const db = b - pb;
+      const dist = dr * dr + dg * dg + db * db;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    }
+    const [pr, pg, pb] = rgbPalette[best];
+    data[idx] = pr;
+    data[idx + 1] = pg;
+    data[idx + 2] = pb;
+    idx += 4;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  const outBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  const buf = await outBlob.arrayBuffer();
+  return new Uint8Array(buf);
+};
+
 const applyTranslations = () => {
   const set = (el, key) => {
     if (el) el.textContent = t(key);
@@ -715,7 +768,6 @@ const importPaletteText = (text) => {
   }
   const formatted = colors.map((h) => `#${h.toUpperCase()}`).join(" ");
   els.paletteInput.value = formatted;
-  els.applyPalette.disabled = false;
   setStatus(t("palette_imported"));
 };
 
@@ -1096,27 +1148,26 @@ const processImage = async () => {
   setProcessing(true);
   try {
     const quantize = els.quantizeToggle.checked;
-  const paletteText = (els.paletteInput.value || "").trim();
-  const customPalette = paletteText
-    ? paletteText
-        .split(/\s+/)
-        .map((hex) => hex.replace("#", ""))
-        .filter((h) => /^[0-9a-fA-F]{6}$/.test(h))
-    : [];
-  let k = quantize
-    ? parseInt(els.kSlider.value, 10)
-    : customPalette.length > 0
-      ? Math.max(1, customPalette.length)
-      : PASS_THROUGH_K; // passthrough
-  if (customPalette.length && quantize) {
-    // If a custom palette is provided and quantization is on, force k to palette size
-    k = customPalette.length;
-  }
+    const paletteText = (els.paletteInput.value || "").trim();
+    const customPalette = parsePaletteText(paletteText);
+    let k = quantize
+      ? parseInt(els.kSlider.value, 10)
+      : customPalette.length > 0
+        ? Math.max(1, customPalette.length)
+        : PASS_THROUGH_K; // passthrough
+    if (customPalette.length && quantize) {
+      // If a custom palette is provided and quantization is on, force k to palette size
+      k = customPalette.length;
+    }
     const seed = BigInt(els.seed.value || "0");
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
     const resampleMode = els.resampleMode.value;
     const edgeWeight = parseFloat(els.edgeWeight.value || "0");
-    const outputBytes = process_image_with(state.inputBytes, k, seed, iterations, resampleMode, edgeWeight);
+    const inputBytes =
+      customPalette.length && quantize
+        ? await paletteQuantize(state.inputBytes, customPalette)
+        : state.inputBytes;
+    const outputBytes = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
     const blob = new Blob([outputBytes], { type: "image/png" });
     if (state.outputUrl) {
       URL.revokeObjectURL(state.outputUrl);
@@ -1199,12 +1250,7 @@ const processBatch = async () => {
   try {
     const quantize = els.quantizeToggle.checked;
     const paletteText = (els.paletteInput.value || "").trim();
-    const customPalette = paletteText
-      ? paletteText
-          .split(/\s+/)
-          .map((hex) => hex.replace("#", ""))
-          .filter((h) => /^[0-9a-fA-F]{6}$/.test(h))
-      : [];
+    const customPalette = parsePaletteText(paletteText);
     const k = quantize
       ? parseInt(els.kSlider.value, 10)
       : customPalette.length > 0
@@ -1218,7 +1264,9 @@ const processBatch = async () => {
     let processed = 0;
     for (const item of state.queue) {
       const bytes = new Uint8Array(await item.file.arrayBuffer());
-      const result = process_image_with(bytes, k, seed, iterations, resampleMode, edgeWeight);
+      const inputBytes =
+        customPalette.length && quantize ? await paletteQuantize(bytes, customPalette) : bytes;
+      const result = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
       const base = item.file.name.replace(/\.[^.]+$/, "");
       zip.file(`${base}_snapped.png`, result);
       processed += 1;
