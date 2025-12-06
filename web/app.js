@@ -76,6 +76,64 @@ const BUILTIN_PRESETS = () => ({
     palette:
       "#000000 #1D2B53 #7E2553 #008751 #AB5236 #5F574F #C2C3C7 #FFF1E8 #FF004D #FFA300 #FFEC27 #00E436 #29ADFF #83769C #FF77A8 #FFCCAA",
   },
+  "C64 (16)": {
+    k: 16,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette:
+      "#000000 #FFFFFF #813338 #75cec8 #8e3c97 #56ac4d #2e2c9b #edf171 #8e5029 #553800 #c46c71 #4a4a4a #7b7b7b #a9ff9f #706deb #b2b2b2",
+  },
+  "ZX Spectrum": {
+    k: 16,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette:
+      "#000000 #0000D7 #D70000 #D700D7 #00D700 #00D7D7 #D7D700 #D7D7D7 #0000FF #FF0000 #FF00FF #00FF00 #00FFFF #FFFF00 #FFFFFF #000000",
+  },
+  "NES 16": {
+    k: 16,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette:
+      "#7C7C7C #0000FC #0000BC #4428BC #940084 #A80020 #A81000 #881400 #503000 #007800 #006800 #005800 #004058 #000000 #BCBCBC #F8F8F8",
+  },
+  "Apple II": {
+    k: 6,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "center",
+    edgeWeight: "1",
+    palette: "#000000 #FFFFFF #DD00DD #00DDDD #0000DD #00DD00",
+  },
+  "CGA Artifact": {
+    k: 4,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "center",
+    edgeWeight: "1",
+    palette: "#000000 #5555FF #FF5555 #FFFF55",
+  },
+  "Amiga WB": {
+    k: 16,
+    seed: "42",
+    iterations: "15",
+    quantize: true,
+    resampleMode: "majority",
+    edgeWeight: "1",
+    palette:
+      "#000000 #555555 #AAAAAA #FFFFFF #0055AA #00AABB #55FFFF #004488 #880000 #AA5500 #FFAA00 #226600 #448844 #88BB88 #6666AA #AA88CC",
+  },
 });
 
 const els = {
