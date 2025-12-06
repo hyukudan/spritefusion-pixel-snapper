@@ -925,11 +925,9 @@ const applyZoom = (factor) => {
 };
 
 const toggleGrid = (on) => {
-  document.querySelectorAll("[data-frame]").forEach((frame) => {
-    frame.classList.toggle("grid-on", on);
+  document.querySelectorAll("[data-grid]").forEach((el) => {
+    el.classList.toggle("grid-on", on);
   });
-  els.compareTop?.classList.toggle("grid-on", on);
-  els.compare?.classList.toggle("grid-on", on);
 };
 
 const renderQueue = () => {
@@ -962,7 +960,7 @@ const setGridOverlay = (meta) => {
   if (!meta) return;
   const stepX = `${meta.cellW}px`;
   const stepY = `${meta.cellH}px`;
-  document.querySelectorAll("[data-frame], .compare").forEach((el) => {
+  document.querySelectorAll("[data-grid]").forEach((el) => {
     el.style.setProperty("--grid-step-x", stepX);
     el.style.setProperty("--grid-step-y", stepY);
   });
