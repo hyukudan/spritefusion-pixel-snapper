@@ -11,6 +11,7 @@ const state = {
   inputStats: null,
   outputStats: null,
   lastDims: null,
+  diffRatio: null,
   processing: false,
   batchProcessing: false,
   lang: (typeof localStorage !== "undefined" && localStorage.getItem("ps_lang")) || "en",
@@ -88,6 +89,23 @@ const els = {
   inputStatsHint: document.getElementById("inputStatsHint"),
   outputStatsHint: document.getElementById("outputStatsHint"),
   palette: document.getElementById("palette"),
+  presetLabel: document.getElementById("presetLabel"),
+  presetSelect: document.getElementById("presetSelect"),
+  applyPreset: document.getElementById("applyPreset"),
+  savePreset: document.getElementById("savePreset"),
+  deletePreset: document.getElementById("deletePreset"),
+  presetName: document.getElementById("presetName"),
+  paletteIOLabel: document.getElementById("paletteIOLabel"),
+  importPalette: document.getElementById("importPalette"),
+  exportPalette: document.getElementById("exportPalette"),
+  importPaletteFile: document.getElementById("importPaletteFile"),
+  diffToggle: document.getElementById("diffToggle"),
+  diffToggleLabel: document.getElementById("diffToggleLabel"),
+  diffInfo: document.getElementById("diffInfo"),
+  diffOverlay: document.getElementById("diffOverlay"),
+  loupeToggle: document.getElementById("loupeToggle"),
+  loupeLabel: document.getElementById("loupeLabel"),
+  loupe: document.getElementById("loupe"),
 };
 
 const translations = {
@@ -116,6 +134,19 @@ const translations = {
     resample_help: "How to pick the color per cell: majority of pixels, center pixel, or edge-aware weighting.",
     edge_weight: "Edge weight",
     edge_weight_help: "How much edges influence the vote in edge-aware mode.",
+    preset_label: "Presets",
+    preset_apply: "Apply",
+    preset_save: "Save",
+    preset_delete: "Delete",
+    palette_io: "Palette I/O",
+    palette_import: "Import",
+    palette_export: "Export",
+    preset_saved: "Preset saved.",
+    palette_invalid: "Palette format not recognized.",
+    palette_imported: "Palette imported.",
+    diff_toggle: "Show diff mask",
+    diff_info: "Diff: {pct}% pixels changed",
+    loupe_label: "Loupe (1:1)",
     swap_btn: "Swap before/after",
     palette_placeholder: "Hex palette, e.g. #FF00FF #00FFFF",
     apply_palette: "Apply palette",
@@ -184,6 +215,19 @@ const translations = {
     resample_help: "Cómo elegir el color de cada celda: mayoría, píxel central o ponderado por bordes.",
     edge_weight: "Peso de borde",
     edge_weight_help: "Cuánto influye el borde en modo sensible a bordes.",
+    preset_label: "Presets",
+    preset_apply: "Aplicar",
+    preset_save: "Guardar",
+    preset_delete: "Borrar",
+    palette_io: "I/O de paleta",
+    palette_import: "Importar",
+    palette_export: "Exportar",
+    preset_saved: "Preset guardado.",
+    palette_invalid: "Formato de paleta no reconocido.",
+    palette_imported: "Paleta importada.",
+    diff_toggle: "Mostrar máscara diff",
+    diff_info: "Diff: {pct}% de píxeles cambiados",
+    loupe_label: "Lupa (1:1)",
     swap_btn: "Intercambiar antes/después",
     palette_placeholder: "Paleta hex, p.ej. #FF00FF #00FFFF",
     apply_palette: "Aplicar paleta",
@@ -252,6 +296,19 @@ const translations = {
     resample_help: "Choix du pixel par cellule : majorité, centre, ou pondération par bordure.",
     edge_weight: "Poids des bords",
     edge_weight_help: "Poids des bords en mode sensible aux bordures.",
+    preset_label: "Presets",
+    preset_apply: "Appliquer",
+    preset_save: "Sauver",
+    preset_delete: "Supprimer",
+    palette_io: "I/O palette",
+    palette_import: "Importer",
+    palette_export: "Exporter",
+    preset_saved: "Preset enregistré.",
+    palette_invalid: "Format de palette non reconnu.",
+    palette_imported: "Palette importée.",
+    diff_toggle: "Afficher le masque diff",
+    diff_info: "Diff : {pct}% de pixels modifiés",
+    loupe_label: "Loupe (1:1)",
     swap_btn: "Inverser avant/après",
     palette_placeholder: "Palette hex, ex. #FF00FF #00FFFF",
     apply_palette: "Appliquer la palette",
@@ -320,6 +377,19 @@ const translations = {
     resample_help: "セル内の色の決め方: 多数決 / 中央 / エッジ重み付け。",
     edge_weight: "エッジ重み",
     edge_weight_help: "エッジ感度モードでの重み付け。",
+    preset_label: "プリセット",
+    preset_apply: "適用",
+    preset_save: "保存",
+    preset_delete: "削除",
+    palette_io: "パレット入出力",
+    palette_import: "インポート",
+    palette_export: "エクスポート",
+    preset_saved: "プリセットを保存しました。",
+    palette_invalid: "パレットの形式が正しくありません。",
+    palette_imported: "パレットを読み込みました。",
+    diff_toggle: "差分マスク表示",
+    diff_info: "差分: {pct}% のピクセルが変更",
+    loupe_label: "ルーペ (1:1)",
     swap_btn: "前後を入れ替え",
     palette_placeholder: "Hex パレット例: #FF00FF #00FFFF",
     apply_palette: "パレットを適用",
@@ -395,6 +465,20 @@ const setLang = (lang) => {
   applyTranslations();
 };
 
+const refreshResampleUI = () => {
+  els.edgeWeight.disabled = els.resampleMode.value !== "edge" || state.processing || state.batchProcessing;
+};
+
+const updateDiffInfo = () => {
+  if (!els.diffInfo) return;
+  if (state.diffRatio === null) {
+    els.diffInfo.textContent = "";
+    return;
+  }
+  const pct = state.diffRatio.toFixed(2);
+  els.diffInfo.textContent = t("diff_info", { pct });
+};
+
 const applyTranslations = () => {
   const set = (el, key) => {
     if (el) el.textContent = t(key);
@@ -428,6 +512,15 @@ const applyTranslations = () => {
   if (els.edgeWeight) {
     els.edgeWeight.title = t("edge_weight_help");
   }
+  set(els.presetLabel, "preset_label");
+  set(els.applyPreset, "preset_apply");
+  set(els.savePreset, "preset_save");
+  set(els.deletePreset, "preset_delete");
+  set(els.paletteIOLabel, "palette_io");
+  set(els.importPalette, "palette_import");
+  set(els.exportPalette, "palette_export");
+  set(els.diffToggleLabel, "diff_toggle");
+  set(els.loupeLabel, "loupe_label");
   set(els.swapBtn, "swap_btn");
   set(els.applyPalette, "apply_palette");
   set(els.snap, state.processing ? "processing" : "snap_btn");
@@ -545,6 +638,40 @@ const renderPalette = (colors) => {
     .join("");
 };
 
+const parsePaletteText = (text) =>
+  (text || "")
+    .split(/[\s,]+/)
+    .map((hex) => hex.replace("#", ""))
+    .filter((h) => /^[0-9a-fA-F]{6}$/.test(h));
+
+const importPaletteText = (text) => {
+  const colors = parsePaletteText(text);
+  if (!colors.length) {
+    setStatus(t("palette_invalid"));
+    return;
+  }
+  const formatted = colors.map((h) => `#${h.toUpperCase()}`).join(" ");
+  els.paletteInput.value = formatted;
+  els.applyPalette.disabled = false;
+  setStatus(t("palette_imported"));
+};
+
+const exportPaletteText = () => {
+  let palette = parsePaletteText(els.paletteInput.value);
+  if (!palette.length && state.outputStats?.topColors?.length) {
+    palette = state.outputStats.topColors.map((c) => c.hex);
+  }
+  if (!palette.length) return;
+  const content = palette.map((h) => `#${h.toUpperCase()}`).join("\n");
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "palette.txt";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
+
 const setProcessing = (busy) => {
   state.processing = busy;
   const disableInteractive = busy || state.batchProcessing;
@@ -576,6 +703,12 @@ const clearOutputPreview = () => {
   els.comparePlaceholder.hidden = false;
   els.comparePlaceholder.textContent = t("compare_placeholder");
   els.compareSlider.disabled = true;
+  state.diffRatio = null;
+  if (els.diffOverlay) {
+    els.diffOverlay.hidden = true;
+    els.diffOverlay.src = "";
+  }
+  updateDiffInfo();
   setCompareReveal(50);
   state.outputStats = null;
   renderStats(els.outputStats, els.outputStatsHint, null);
@@ -632,6 +765,93 @@ const setActiveFromQueue = async (idx) => {
   renderQueue();
 };
 
+const presetsKey = "ps_presets";
+
+const loadPresets = () => {
+  let presets = {};
+  try {
+    const raw = localStorage.getItem(presetsKey);
+    if (raw) {
+      presets = JSON.parse(raw);
+    }
+  } catch (_) {
+    presets = {};
+  }
+  if (Object.keys(presets).length === 0) {
+    presets["Default"] = {
+      k: Number(els.kSlider.value),
+      seed: els.seed.value,
+      iterations: els.iterations.value,
+      quantize: els.quantizeToggle.checked,
+      resampleMode: els.resampleMode.value,
+      edgeWeight: els.edgeWeight.value,
+      palette: "",
+    };
+  }
+  return presets;
+};
+
+const savePresets = (presets) => {
+  try {
+    localStorage.setItem(presetsKey, JSON.stringify(presets));
+  } catch (_) {
+    // ignore
+  }
+};
+
+const refreshPresetSelect = () => {
+  if (!els.presetSelect) return;
+  const presets = loadPresets();
+  els.presetSelect.innerHTML = Object.keys(presets)
+    .map((name) => `<option value="${name}">${name}</option>`)
+    .join("");
+};
+
+const applyPreset = (name) => {
+  const presets = loadPresets();
+  const preset = presets[name];
+  if (!preset) return;
+  els.kSlider.value = preset.k;
+  els.kInput.value = preset.k;
+  els.kValue.textContent = preset.k;
+  els.seed.value = preset.seed;
+  els.iterations.value = preset.iterations;
+  els.quantizeToggle.checked = preset.quantize;
+  els.resampleMode.value = preset.resampleMode || "majority";
+  els.edgeWeight.value = preset.edgeWeight || "1";
+  if (preset.palette !== undefined) {
+    els.paletteInput.value = preset.palette;
+  }
+  refreshResampleUI();
+};
+
+const handleSavePreset = () => {
+  const name = (els.presetName.value || "").trim() || "Preset";
+  const presets = loadPresets();
+  presets[name] = {
+    k: parseInt(els.kSlider.value, 10) || 16,
+    seed: els.seed.value,
+    iterations: els.iterations.value,
+    quantize: els.quantizeToggle.checked,
+    resampleMode: els.resampleMode.value,
+    edgeWeight: els.edgeWeight.value,
+    palette: els.paletteInput.value,
+  };
+  savePresets(presets);
+  refreshPresetSelect();
+  els.presetSelect.value = name;
+  setStatus(t("preset_saved"));
+};
+
+const handleDeletePreset = () => {
+  const name = els.presetSelect.value;
+  if (!name || name === "Default") return;
+  const presets = loadPresets();
+  delete presets[name];
+  savePresets(presets);
+  refreshPresetSelect();
+};
+
 const sizeCompare = (width, height) => {
   if (!els.compare) return;
   const body = els.compare.closest(".compare-body");
@@ -649,6 +869,93 @@ const setCompareReveal = (percent) => {
   const clamped = Math.min(100, Math.max(0, Number(percent) || 0));
   els.compareTop.style.setProperty("--reveal", `${clamped}%`);
   els.compareSlider.value = clamped;
+};
+
+const computeDiffMask = async () => {
+  if (!state.inputUrl || !state.outputUrl || !els.diffOverlay) return;
+  const [inImg, outImg] = await Promise.all([loadImage(state.inputUrl), loadImage(state.outputUrl)]);
+  if (inImg.naturalWidth !== outImg.naturalWidth || inImg.naturalHeight !== outImg.naturalHeight) {
+    state.diffRatio = null;
+    updateDiffInfo();
+    els.diffOverlay.hidden = true;
+    return;
+  }
+  const w = inImg.naturalWidth;
+  const h = inImg.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(inImg, 0, 0);
+  const inData = ctx.getImageData(0, 0, w, h);
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(outImg, 0, 0);
+  const outData = ctx.getImageData(0, 0, w, h);
+  const diffData = ctx.createImageData(w, h);
+  let changed = 0;
+  for (let i = 0; i < inData.data.length; i += 4) {
+    const r1 = inData.data[i];
+    const g1 = inData.data[i + 1];
+    const b1 = inData.data[i + 2];
+    const r2 = outData.data[i];
+    const g2 = outData.data[i + 1];
+    const b2 = outData.data[i + 2];
+    const different = r1 !== r2 || g1 !== g2 || b1 !== b2;
+    if (different) {
+      diffData.data[i] = 255;
+      diffData.data[i + 1] = 0;
+      diffData.data[i + 2] = 0;
+      diffData.data[i + 3] = 160;
+      changed += 1;
+    } else {
+      diffData.data[i + 3] = 0;
+    }
+  }
+  state.diffRatio = (changed / (w * h)) * 100;
+  updateDiffInfo();
+  ctx.putImageData(diffData, 0, 0);
+  els.diffOverlay.src = canvas.toDataURL("image/png");
+  els.diffOverlay.hidden = !els.diffToggle.checked;
+};
+
+const updateLoupe = (event) => {
+  if (!els.loupe || els.loupe.hidden || !state.outputUrl) return;
+  const img = els.compareOverlay;
+  if (!img || !img.naturalWidth) return;
+  const rect = els.compare.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const iw = img.naturalWidth;
+  const ih = img.naturalHeight;
+  const cw = rect.width;
+  const ch = rect.height;
+  const scale = Math.min(cw / iw, ch / ih);
+  const drawW = iw * scale;
+  const drawH = ih * scale;
+  const offsetX = (cw - drawW) / 2;
+  const offsetY = (ch - drawH) / 2;
+  if (x < offsetX || x > offsetX + drawW || y < offsetY || y > offsetY + drawH) return;
+  const imgX = Math.max(0, Math.min(iw - 1, Math.round((x - offsetX) / scale)));
+  const imgY = Math.max(0, Math.min(ih - 1, Math.round((y - offsetY) / scale)));
+  const ctx = els.loupe.getContext("2d");
+  const size = 24;
+  const scaleFactor = 4;
+  els.loupe.width = size * scaleFactor;
+  els.loupe.height = size * scaleFactor;
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, els.loupe.width, els.loupe.height);
+  ctx.drawImage(
+    img,
+    imgX - size / 2,
+    imgY - size / 2,
+    size,
+    size,
+    0,
+    0,
+    els.loupe.width,
+    els.loupe.height
+  );
+  els.loupe.hidden = false;
 };
 
 const acceptFile = async (file, pushToQueue = true, analyze = true) => {
@@ -779,6 +1086,7 @@ const processImage = async () => {
     els.compareSlider.disabled = false;
     setCompareReveal(50);
     sizeCompare(img.naturalWidth, img.naturalHeight);
+    computeDiffMask();
 
     try {
       state.outputStats = await analyzeImage(state.outputUrl);
@@ -921,6 +1229,8 @@ const wireUI = () => {
   els.kInput.addEventListener("input", (e) => {
     syncK(e.target.value);
   });
+  els.resampleMode.addEventListener("change", refreshResampleUI);
+  els.edgeWeight.addEventListener("input", refreshResampleUI);
   els.compareSlider.addEventListener("input", (e) => {
     setCompareReveal(e.target.value);
   });
@@ -943,6 +1253,34 @@ const wireUI = () => {
   els.applyPalette.addEventListener("click", () => {
     setStatus(t("custom_palette_applied"));
   });
+  els.diffToggle.addEventListener("change", () => {
+    if (els.diffOverlay) {
+      els.diffOverlay.hidden = !els.diffToggle.checked;
+    }
+  });
+  els.compare.addEventListener("mousemove", updateLoupe);
+  els.compare.addEventListener("mouseleave", () => {
+    if (els.loupe) els.loupe.hidden = true;
+  });
+  els.loupeToggle.addEventListener("change", (e) => {
+    if (els.loupe) {
+      els.loupe.hidden = !e.target.checked;
+    }
+  });
+  els.applyPreset.addEventListener("click", () => applyPreset(els.presetSelect.value));
+  els.savePreset.addEventListener("click", handleSavePreset);
+  els.deletePreset.addEventListener("click", handleDeletePreset);
+  els.importPalette.addEventListener("click", () => els.importPaletteFile.click());
+  els.importPaletteFile.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    importPaletteText(text);
+    e.target.value = "";
+  });
+  els.exportPalette.addEventListener("click", exportPaletteText);
+  refreshPresetSelect();
+  refreshResampleUI();
   applyZoom(els.zoom.value);
   toggleGrid(els.gridToggle.checked);
 };

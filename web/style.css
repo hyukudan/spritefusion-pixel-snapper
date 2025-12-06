@@ -239,6 +239,17 @@ input[type="number"] {
   width: 100%;
 }
 
+.controls.mini {
+  display: grid;
+  gap: 6px;
+}
+
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+}
+
 .select {
   padding: 10px 12px;
   border-radius: 10px;
@@ -418,10 +429,34 @@ img {
   clip-path: inset(0 calc(100% - var(--reveal, 50%)) 0 0);
 }
 
+.diff-overlay {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: screen;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
 .compare-slider {
   width: 100%;
   margin-top: 8px;
   accent-color: var(--accent);
+}
+
+.compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.loupe {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  image-rendering: pixelated;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .stats {

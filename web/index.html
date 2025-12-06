@@ -104,6 +104,28 @@
               <input type="text" id="paletteInput" placeholder="Hex palette, e.g. #FF00FF #00FFFF" />
               <button class="btn ghost" id="applyPalette" disabled>Apply palette</button>
             </div>
+            <div class="control inline dual">
+              <div class="controls mini">
+                <label id="presetLabel">Presets</label>
+                <div class="preset-row">
+                  <select id="presetSelect" class="select"></select>
+                  <button class="btn ghost" id="applyPreset">Apply</button>
+                </div>
+                <div class="preset-row">
+                  <input type="text" id="presetName" placeholder="New preset name" />
+                  <button class="btn ghost" id="savePreset">Save</button>
+                  <button class="btn ghost" id="deletePreset">Delete</button>
+                </div>
+              </div>
+              <div class="controls mini">
+                <label id="paletteIOLabel">Palette I/O</label>
+                <div class="preset-row">
+                  <button class="btn ghost" id="importPalette">Import</button>
+                  <button class="btn ghost" id="exportPalette">Export</button>
+                </div>
+                <input type="file" id="importPaletteFile" accept=".txt,.gpl,.pal" hidden />
+              </div>
+            </div>
             <button class="btn primary wide" id="snap">Snap pixels</button>
             <p class="status" id="status">Ready: drop an image to start.</p>
           </div>
@@ -143,10 +165,23 @@
                 <img id="compareBase" class="zoomable" alt="Comparador base" />
                 <div class="compare-top" id="compareTop">
                   <img id="compareOverlay" class="zoomable" alt="Comparador overlay" />
+                  <img id="diffOverlay" class="zoomable diff-overlay" alt="Diff overlay" hidden />
                 </div>
               </div>
             </div>
             <input type="range" min="0" max="100" value="50" id="compareSlider" class="compare-slider" disabled>
+            <div class="compare-controls">
+              <label class="toggle">
+                <input type="checkbox" id="diffToggle">
+                <span id="diffToggleLabel">Show diff mask</span>
+              </label>
+              <span class="hint" id="diffInfo"></span>
+              <label class="toggle">
+                <input type="checkbox" id="loupeToggle">
+                <span id="loupeLabel">Loupe (1:1)</span>
+              </label>
+            </div>
+            <canvas id="loupe" class="loupe" width="96" height="96" hidden></canvas>
           </div>
         </div>
 
