@@ -53,6 +53,13 @@ const els = {
   gridLabel: document.getElementById("gridLabel"),
   outputNameLabel: document.getElementById("outputNameLabel"),
   quantizeLabel: document.getElementById("quantizeLabel"),
+  resampleLabel: document.getElementById("resampleLabel"),
+  resampleMode: document.getElementById("resampleMode"),
+  resampleMajority: document.getElementById("resampleMajority"),
+  resampleCenter: document.getElementById("resampleCenter"),
+  resampleEdge: document.getElementById("resampleEdge"),
+  edgeWeight: document.getElementById("edgeWeight"),
+  edgeWeightLabel: document.getElementById("edgeWeightLabel"),
   originalTitle: document.getElementById("originalTitle"),
   snappedTitle: document.getElementById("snappedTitle"),
   compareTitle: document.getElementById("compareTitle"),
@@ -382,6 +389,11 @@ const applyTranslations = () => {
   set(els.gridLabel, "grid_label");
   set(els.outputNameLabel, "output_name");
   set(els.quantizeLabel, "quantize_label");
+  set(els.resampleLabel, "resample_label");
+  set(els.resampleMajority, "resample_majority");
+  set(els.resampleCenter, "resample_center");
+  set(els.resampleEdge, "resample_edge");
+  set(els.edgeWeightLabel, "edge_weight");
   set(els.swapBtn, "swap_btn");
   set(els.applyPalette, "apply_palette");
   set(els.snap, state.processing ? "processing" : "snap_btn");
@@ -508,6 +520,8 @@ const setProcessing = (busy) => {
   els.iterations.disabled = disableInteractive;
   els.zoom.disabled = disableInteractive;
   els.gridToggle.disabled = disableInteractive;
+  els.resampleMode.disabled = disableInteractive;
+  els.edgeWeight.disabled = disableInteractive || els.resampleMode.value !== "edge";
   els.batch.disabled = disableInteractive || !state.queue.length;
   els.download.setAttribute("aria-busy", busy);
   els.snap.textContent = busy ? t("processing") : t("snap_btn");
@@ -691,7 +705,9 @@ const processImage = async () => {
         : PASS_THROUGH_K; // passthrough
     const seed = BigInt(els.seed.value || "0");
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
-    const outputBytes = process_image_with(state.inputBytes, k, seed, iterations);
+    const resampleMode = els.resampleMode.value;
+    const edgeWeight = parseFloat(els.edgeWeight.value || "0");
+    const outputBytes = process_image_with(state.inputBytes, k, seed, iterations, resampleMode, edgeWeight);
     const blob = new Blob([outputBytes], { type: "image/png" });
     if (state.outputUrl) {
       URL.revokeObjectURL(state.outputUrl);
@@ -786,11 +802,13 @@ const processBatch = async () => {
         : PASS_THROUGH_K;
     const seed = BigInt(els.seed.value || "0");
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
+    const resampleMode = els.resampleMode.value;
+    const edgeWeight = parseFloat(els.edgeWeight.value || "0");
     const zip = new JSZip();
     let processed = 0;
     for (const item of state.queue) {
       const bytes = new Uint8Array(await item.file.arrayBuffer());
-      const result = process_image_with(bytes, k, seed, iterations);
+      const result = process_image_with(bytes, k, seed, iterations, resampleMode, edgeWeight);
       const base = item.file.name.replace(/\.[^.]+$/, "");
       zip.file(`${base}_snapped.png`, result);
       processed += 1;

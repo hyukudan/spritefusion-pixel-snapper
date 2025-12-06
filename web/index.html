@@ -87,6 +87,20 @@
               <button class="btn ghost" id="swapBtn" disabled>Swap before/after</button>
             </div>
             <div class="control inline dual">
+              <label>
+                <span id="resampleLabel">Resampling</span>
+                <select id="resampleMode" class="select">
+                  <option value="majority" id="resampleMajority">Majority vote</option>
+                  <option value="center" id="resampleCenter">Center sample</option>
+                  <option value="edge" id="resampleEdge">Edge-aware vote</option>
+                </select>
+              </label>
+              <label>
+                <span id="edgeWeightLabel">Edge weight</span>
+                <input type="range" min="0" max="3" step="0.1" value="1" id="edgeWeight">
+              </label>
+            </div>
+            <div class="control inline dual">
               <input type="text" id="paletteInput" placeholder="Hex palette, e.g. #FF00FF #00FFFF" />
               <button class="btn ghost" id="applyPalette" disabled>Apply palette</button>
             </div>

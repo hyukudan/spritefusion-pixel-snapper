@@ -18,6 +18,8 @@ use wasm_bindgen::prelude::*;
 pub struct Config {
     pub k_colors: usize,
     k_seed: u64,
+    resample_mode: ResampleMode,
+    edge_weight: f64,
     /// Input image path only used for CLI use
     #[allow(dead_code)]
     input_path: String,
@@ -40,6 +42,8 @@ impl Default for Config {
         Self {
             k_colors: 16,
             k_seed: 42,
+            resample_mode: ResampleMode::Majority,
+            edge_weight: 1.0,
             input_path: "samples/2/skeleton.png".to_string(),
             output_path: "samples/2/skeleton_fixed_clean2.png".to_string(),
             max_kmeans_iterations: 15,
@@ -60,6 +64,13 @@ pub enum PixelSnapperError {
     ImageError(image::ImageError),
     InvalidInput(String),
     ProcessingError(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ResampleMode {
+    Majority,
+    Center,
+    EdgeAware,
 }
 
 impl fmt::Display for PixelSnapperError {
@@ -135,7 +146,7 @@ fn process_image_bytes_common(input_bytes: &[u8], config: Option<Config>) -> Res
         &config,
     );
 
-    let output_img = resample(&quantized_img, &col_cuts, &row_cuts)?;
+    let output_img = resample(&quantized_img, &col_cuts, &row_cuts, &config)?;
 
     // Returns bytes for both implementations
     let mut output_bytes = Vec::new();
@@ -154,7 +165,7 @@ pub fn process_image(
     input_bytes: &[u8],
     k_colors: Option<u32>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
-    let config = build_config(k_colors, None, None)?;
+    let config = build_config(k_colors, None, None, None, None)?;
     process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
 }
 
@@ -166,8 +177,10 @@ pub fn process_image_with(
     k_colors: Option<u32>,
     k_seed: Option<u64>,
     max_kmeans_iterations: Option<u32>,
+    resample_mode: Option<String>,
+    edge_weight: Option<f64>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
-    let config = build_config(k_colors, k_seed, max_kmeans_iterations)?;
+    let config = build_config(k_colors, k_seed, max_kmeans_iterations, resample_mode, edge_weight)?;
     process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
 }
 
@@ -176,6 +189,8 @@ fn build_config(
     k_colors: Option<u32>,
     k_seed: Option<u64>,
     max_kmeans_iterations: Option<u32>,
+    resample_mode: Option<String>,
+    edge_weight: Option<f64>,
 ) -> std::result::Result<Config, wasm_bindgen::JsValue> {
     let mut config = Config::default();
     if let Some(k) = k_colors {
@@ -197,6 +212,19 @@ fn build_config(
             ));
         }
         config.max_kmeans_iterations = iter as usize;
+    }
+    if let Some(mode) = resample_mode {
+        let lower = mode.to_lowercase();
+        config.resample_mode = match lower.as_str() {
+            "center" => ResampleMode::Center,
+            "edge" | "edge-aware" | "edgeaware" => ResampleMode::EdgeAware,
+            _ => ResampleMode::Majority,
+        };
+    }
+    if let Some(weight) = edge_weight {
+        if weight >= 0.0 && weight.is_finite() {
+            config.edge_weight = weight.min(5.0);
+        }
     }
     Ok(config)
 }
@@ -788,7 +816,7 @@ fn snap_uniform_cuts(
     cuts
 }
 
-fn resample(img: &RgbImage, cols: &[usize], rows: &[usize]) -> Result<RgbImage> {
+fn resample(img: &RgbImage, cols: &[usize], rows: &[usize], config: &Config) -> Result<RgbImage> {
     if cols.len() < 2 || rows.len() < 2 {
         return Err(PixelSnapperError::ProcessingError(
             "Insufficient grid cuts for resampling".to_string(),
@@ -799,6 +827,9 @@ fn resample(img: &RgbImage, cols: &[usize], rows: &[usize]) -> Result<RgbImage> 
     let cells_w = cols.len() - 1;
     let cells_h = rows.len() - 1;
     let mut cell_colors = vec![vec!([0u8; 3]; cells_w); cells_h];
+
+    let width = img.width() as usize;
+    let height = img.height() as usize;
 
     for (y_i, w_y) in rows.windows(2).enumerate() {
         for (x_i, w_x) in cols.windows(2).enumerate() {
@@ -811,32 +842,74 @@ fn resample(img: &RgbImage, cols: &[usize], rows: &[usize]) -> Result<RgbImage> 
                 continue;
             }
 
-            let mut counts: HashMap<[u8; 3], usize> = HashMap::new();
-
-            for y in ys..ye {
-                for x in xs..xe {
-                    if x < img.width() as usize && y < img.height() as usize {
-                        let p = img.get_pixel(x as u32, y as u32).0;
-                        *counts.entry(p).or_insert(0) += 1;
+            let best_pixel = match config.resample_mode {
+                ResampleMode::Center => {
+                    let cx = ((xs + xe.saturating_sub(1)) / 2).min(width.saturating_sub(1));
+                    let cy = ((ys + ye.saturating_sub(1)) / 2).min(height.saturating_sub(1));
+                    img.get_pixel(cx as u32, cy as u32).0
+                }
+                ResampleMode::Majority => {
+                    let mut counts: HashMap<[u8; 3], f64> = HashMap::new();
+                    for y in ys..ye {
+                        for x in xs..xe {
+                            if x < width && y < height {
+                                let p = img.get_pixel(x as u32, y as u32).0;
+                                *counts.entry(p).or_insert(0.0) += 1.0;
+                            }
+                        }
                     }
+                    counts
+                        .into_iter()
+                        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal))
+                        .map(|(color, _)| color)
+                        .unwrap_or([0, 0, 0])
                 }
-            }
-
-            let mut best_pixel = [0, 0, 0];
-
-            let mut candidates: Vec<([u8; 3], usize)> = counts.into_iter().collect();
-            candidates.sort_by(|a, b| {
-                let count_cmp = b.1.cmp(&a.1);
-                if count_cmp == Ordering::Equal {
-                    a.0.cmp(&b.0)
-                } else {
-                    count_cmp
+                ResampleMode::EdgeAware => {
+                    let mut counts: HashMap<[u8; 3], f64> = HashMap::new();
+                    let weight = config.edge_weight.max(0.0);
+                    for y in ys..ye {
+                        for x in xs..xe {
+                            if x >= width || y >= height {
+                                continue;
+                            }
+                            let p = img.get_pixel(x as u32, y as u32).0;
+                            let lum = 0.299 * p[0] as f64 + 0.587 * p[1] as f64 + 0.114 * p[2] as f64;
+                            let xm1 = x.saturating_sub(1);
+                            let xp1 = (x + 1).min(width - 1);
+                            let ym1 = y.saturating_sub(1);
+                            let yp1 = (y + 1).min(height - 1);
+                            let lum_left = {
+                                let pl = img.get_pixel(xm1 as u32, y as u32).0;
+                                0.299 * pl[0] as f64 + 0.587 * pl[1] as f64 + 0.114 * pl[2] as f64
+                            };
+                            let lum_right = {
+                                let pr = img.get_pixel(xp1 as u32, y as u32).0;
+                                0.299 * pr[0] as f64 + 0.587 * pr[1] as f64 + 0.114 * pr[2] as f64
+                            };
+                            let lum_up = {
+                                let pu = img.get_pixel(x as u32, ym1 as u32).0;
+                                0.299 * pu[0] as f64 + 0.587 * pu[1] as f64 + 0.114 * pu[2] as f64
+                            };
+                            let lum_down = {
+                                let pd = img.get_pixel(x as u32, yp1 as u32).0;
+                                0.299 * pd[0] as f64 + 0.587 * pd[1] as f64 + 0.114 * pd[2] as f64
+                            };
+                            let grad = (lum - lum_left).abs()
+                                + (lum - lum_right).abs()
+                                + (lum - lum_up).abs()
+                                + (lum - lum_down).abs();
+                            let norm_grad = (grad / (4.0 * 255.0)).min(1.0);
+                            let w = 1.0 + weight * norm_grad;
+                            *counts.entry(p).or_insert(0.0) += w;
+                        }
+                    }
+                    counts
+                        .into_iter()
+                        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal))
+                        .map(|(color, _)| color)
+                        .unwrap_or([0, 0, 0])
                 }
-            });
-
-            if let Some(winner) = candidates.first() {
-                best_pixel = winner.0;
-            }
+            };
 
             cell_colors[y_i][x_i] = best_pixel;
         }
