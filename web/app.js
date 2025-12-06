@@ -6,6 +6,7 @@ const state = {
   inputName: null,
   inputUrl: null,
   outputUrl: null,
+  outputBytes: null, // Store original output bytes for remapping
   queue: [],
   activeIndex: -1,
   inputStats: null,
@@ -15,6 +16,7 @@ const state = {
   gridMeta: null,
   processing: false,
   batchProcessing: false,
+  colorRemap: {}, // Color remapping: { "FF0000": "00FF00" }
   lang: (typeof localStorage !== "undefined" && localStorage.getItem("ps_lang")) || "en",
 };
 
@@ -320,6 +322,8 @@ const translations = {
     grid_regularity: "Grid regularity",
     color_similarity: "Color similarity",
     pixels_changed: "Pixels changed",
+    click_to_remap: "Click to remap color",
+    reset_remap: "Reset colors",
   },
   es: {
     lede: "Alinea pixel art desordenado a una cuadrícula nítida en tu navegador. Ajusta la paleta, compara antes/después y exporta el PNG limpio.",
@@ -407,6 +411,8 @@ const translations = {
     grid_regularity: "Regularidad del grid",
     color_similarity: "Similitud de color",
     pixels_changed: "Píxeles cambiados",
+    click_to_remap: "Clic para reasignar color",
+    reset_remap: "Restablecer colores",
   },
   fr: {
     lede: "Alignez un pixel art brouillon sur une grille nette dans votre navigateur. Ajustez la palette, comparez avant/après et exportez le PNG nettoyé.",
@@ -494,6 +500,8 @@ const translations = {
     grid_regularity: "Régularité de la grille",
     color_similarity: "Similarité des couleurs",
     pixels_changed: "Pixels modifiés",
+    click_to_remap: "Cliquez pour remapper la couleur",
+    reset_remap: "Réinitialiser les couleurs",
   },
   ja: {
     lede: "ブラウザ内でピクセルアートをきれいなグリッドにスナップ。パレットを調整し、ビフォー/アフターを比較してPNGを書き出せます。",
@@ -583,6 +591,8 @@ const translations = {
     grid_regularity: "グリッド規則性",
     color_similarity: "色の類似度",
     pixels_changed: "変更ピクセル",
+    click_to_remap: "クリックして色を変更",
+    reset_remap: "色をリセット",
   },
 };
 
@@ -927,6 +937,62 @@ const renderStats = (target, hintEl, stats, labelPrefix = "", qualityMetrics = n
   hintEl.textContent = t("stats_note");
 };
 
+const applyColorRemap = async () => {
+  if (!state.outputBytes || Object.keys(state.colorRemap).length === 0) return;
+
+  const blob = new Blob([state.outputBytes], { type: "image/png" });
+  const img = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  // Build lookup table from remap
+  const remapLookup = {};
+  for (const [from, to] of Object.entries(state.colorRemap)) {
+    const fromR = parseInt(from.slice(0, 2), 16);
+    const fromG = parseInt(from.slice(2, 4), 16);
+    const fromB = parseInt(from.slice(4, 6), 16);
+    const toR = parseInt(to.slice(0, 2), 16);
+    const toG = parseInt(to.slice(2, 4), 16);
+    const toB = parseInt(to.slice(4, 6), 16);
+    remapLookup[`${fromR},${fromG},${fromB}`] = [toR, toG, toB];
+  }
+
+  for (let i = 0; i < data.length; i += 4) {
+    const key = `${data[i]},${data[i + 1]},${data[i + 2]}`;
+    if (remapLookup[key]) {
+      const [r, g, b] = remapLookup[key];
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  const outBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+
+  if (state.outputUrl) {
+    URL.revokeObjectURL(state.outputUrl);
+  }
+  state.outputUrl = URL.createObjectURL(outBlob);
+
+  els.outputPreview.src = state.outputUrl;
+  els.compareOverlay.src = state.outputUrl;
+  els.download.href = state.outputUrl;
+
+  // Re-analyze to update stats
+  try {
+    state.outputStats = await analyzeImage(state.outputUrl);
+    renderPalette(state.outputStats.topColors);
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 const renderPalette = (colors) => {
   if (!els.palette) return;
   if (!colors || !colors.length) {
@@ -934,14 +1000,83 @@ const renderPalette = (colors) => {
     return;
   }
   const total = colors.reduce((sum, c) => sum + c.count, 0);
+
+  // Add reset button if there are remaps
+  const hasRemaps = Object.keys(state.colorRemap).length > 0;
+  const resetBtn = hasRemaps
+    ? `<button class="swatch reset-remap" title="${t("reset_remap")}">↺</button>`
+    : "";
+
   els.palette.innerHTML = colors
     .map((c) => {
       const pct = Math.round((c.count / total) * 100);
-      return `<div class="swatch" style="background:#${c.hex};" title="${c.hex} · ${pct}%">
+      const remapped = state.colorRemap[c.hex];
+      const displayColor = remapped ? `#${remapped}` : `#${c.hex}`;
+      const remapIndicator = remapped ? " ✓" : "";
+      return `<div class="swatch" style="background:${displayColor}; cursor: pointer;"
+                   title="${t("click_to_remap")}: #${c.hex} · ${pct}%${remapIndicator}"
+                   data-hex="${c.hex}">
         ${pct}%
       </div>`;
     })
-    .join("");
+    .join("") + resetBtn;
+
+  // Add click handlers
+  els.palette.querySelectorAll(".swatch[data-hex]").forEach((swatch) => {
+    swatch.addEventListener("click", () => {
+      const hex = swatch.dataset.hex;
+      const currentColor = state.colorRemap[hex] || hex;
+
+      // Create hidden color input
+      const picker = document.createElement("input");
+      picker.type = "color";
+      picker.value = `#${currentColor}`;
+      picker.style.position = "absolute";
+      picker.style.opacity = "0";
+      picker.style.pointerEvents = "none";
+      document.body.appendChild(picker);
+
+      picker.addEventListener("input", (e) => {
+        const newColor = e.target.value.replace("#", "").toUpperCase();
+        if (newColor !== hex) {
+          state.colorRemap[hex] = newColor;
+        } else {
+          delete state.colorRemap[hex];
+        }
+        applyColorRemap();
+      });
+
+      picker.addEventListener("change", () => {
+        document.body.removeChild(picker);
+      });
+
+      picker.click();
+    });
+  });
+
+  // Reset button handler
+  const resetEl = els.palette.querySelector(".reset-remap");
+  if (resetEl) {
+    resetEl.addEventListener("click", async () => {
+      state.colorRemap = {};
+      if (state.outputBytes) {
+        const blob = new Blob([state.outputBytes], { type: "image/png" });
+        if (state.outputUrl) {
+          URL.revokeObjectURL(state.outputUrl);
+        }
+        state.outputUrl = URL.createObjectURL(blob);
+        els.outputPreview.src = state.outputUrl;
+        els.compareOverlay.src = state.outputUrl;
+        els.download.href = state.outputUrl;
+        try {
+          state.outputStats = await analyzeImage(state.outputUrl);
+          renderPalette(state.outputStats.topColors);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
+  }
 };
 
 const parsePaletteText = (text) =>
@@ -1445,6 +1580,8 @@ const processImage = async () => {
       targetHeight
     );
     const outputBytes = new Uint8Array(result[0]);
+    state.outputBytes = outputBytes; // Store for color remapping
+    state.colorRemap = {}; // Reset color remaps
     const meta = {
       cols: Number(result[1]),
       rows: Number(result[2]),

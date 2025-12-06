@@ -531,6 +531,24 @@ img {
   color: #0f172a;
   font-size: 11px;
   background: #fff;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.swatch[data-hex]:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+
+.swatch.reset-remap {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--panel-ink);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.swatch.reset-remap:hover {
+  background: rgba(255, 122, 80, 0.3);
 }
 
 .zoomable {
