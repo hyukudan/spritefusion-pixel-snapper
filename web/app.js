@@ -925,9 +925,10 @@ const applyZoom = (factor) => {
 };
 
 const toggleGrid = (on) => {
-  document.querySelectorAll("[data-grid]").forEach((el) => {
-    el.classList.toggle("grid-on", on);
-  });
+  const snapGrid = document.querySelector('[data-grid="snap"]');
+  if (snapGrid) {
+    snapGrid.classList.toggle("grid-on", on);
+  }
 };
 
 const renderQueue = () => {
@@ -957,13 +958,22 @@ const setActiveFromQueue = async (idx) => {
 };
 
 const setGridOverlay = (meta) => {
-  if (!meta) return;
-  const stepX = `${meta.cellW}px`;
-  const stepY = `${meta.cellH}px`;
-  document.querySelectorAll("[data-grid]").forEach((el) => {
-    el.style.setProperty("--grid-step-x", stepX);
-    el.style.setProperty("--grid-step-y", stepY);
-  });
+  if (!meta || !els.outputPreview) return;
+  const container = document.querySelector('[data-grid="snap"]');
+  if (!container) return;
+  const img = els.outputPreview;
+  const cols = meta.cols || 1;
+  const rows = meta.rows || 1;
+  const displayW = img.clientWidth || img.naturalWidth;
+  const displayH = img.clientHeight || img.naturalHeight;
+  const stepX = `${displayW / cols}px`;
+  const stepY = `${displayH / rows}px`;
+  const offsetX = ((container.clientWidth || displayW) - displayW) / 2;
+  const offsetY = ((container.clientHeight || displayH) - displayH) / 2;
+  container.style.setProperty("--grid-step-x", stepX);
+  container.style.setProperty("--grid-step-y", stepY);
+  container.style.setProperty("--grid-offset-x", `${offsetX}px`);
+  container.style.setProperty("--grid-offset-y", `${offsetY}px`);
 };
 
 const presetsKey = "ps_presets";
@@ -1484,6 +1494,9 @@ const wireUI = () => {
   window.addEventListener("resize", () => {
     if (state.lastDims) {
       sizeCompare(state.lastDims.width, state.lastDims.height);
+    }
+    if (state.gridMeta) {
+      setGridOverlay(state.gridMeta);
     }
   });
   els.swapBtn.addEventListener("click", () => {

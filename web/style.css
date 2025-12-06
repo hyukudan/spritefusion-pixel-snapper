@@ -364,6 +364,7 @@ input[type="number"] {
     linear-gradient(90deg, rgba(255, 255, 255, 0.25) 1px, transparent 1px);
   background-size: var(--grid-step-x, 16px) var(--grid-step-y, 16px),
     var(--grid-step-x, 16px) var(--grid-step-y, 16px);
+  background-position: var(--grid-offset-x, 0px) var(--grid-offset-y, 0px);
   pointer-events: none;
   mix-blend-mode: screen;
 }
