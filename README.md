@@ -78,6 +78,20 @@ Pre-configured palettes for classic systems:
 - Aspect ratio is preserved when only one dimension is set
 - Uses block voting for non-integer scaling
 
+### Quality Report
+
+After processing, the stats panel shows quality metrics:
+- **Grid regularity**: How uniform the detected cell sizes are (100% = perfect grid)
+- **Color similarity**: How close the output colors are to the original
+- **Pixels changed**: Percentage of pixels modified during processing
+
+### Palette Remapper
+
+- Click any color swatch to open a color picker
+- Remap colors in real-time without re-processing
+- Reset button to restore original colors
+- Changes are applied instantly to the preview and download
+
 ### Multi-language Support
 
 - English (EN)
