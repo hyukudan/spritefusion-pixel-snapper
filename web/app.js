@@ -109,6 +109,13 @@ const translations = {
     grid_label: "Show grid overlay",
     output_name: "Output name",
     quantize_label: "Quantize to k colors",
+    resample_label: "Resampling",
+    resample_majority: "Majority vote",
+    resample_center: "Center sample",
+    resample_edge: "Edge-aware vote",
+    resample_help: "How to pick the color per cell: majority of pixels, center pixel, or edge-aware weighting.",
+    edge_weight: "Edge weight",
+    edge_weight_help: "How much edges influence the vote in edge-aware mode.",
     swap_btn: "Swap before/after",
     palette_placeholder: "Hex palette, e.g. #FF00FF #00FFFF",
     apply_palette: "Apply palette",
@@ -170,6 +177,13 @@ const translations = {
     grid_label: "Mostrar grid overlay",
     output_name: "Nombre de salida",
     quantize_label: "Cuantizar a k colores",
+    resample_label: "Re-muestreo",
+    resample_majority: "Mayoría",
+    resample_center: "Centro",
+    resample_edge: "Sens. bordes",
+    resample_help: "Cómo elegir el color de cada celda: mayoría, píxel central o ponderado por bordes.",
+    edge_weight: "Peso de borde",
+    edge_weight_help: "Cuánto influye el borde en modo sensible a bordes.",
     swap_btn: "Intercambiar antes/después",
     palette_placeholder: "Paleta hex, p.ej. #FF00FF #00FFFF",
     apply_palette: "Aplicar paleta",
@@ -231,6 +245,13 @@ const translations = {
     grid_label: "Afficher la grille",
     output_name: "Nom de sortie",
     quantize_label: "Quantifier à k couleurs",
+    resample_label: "Re-échantillonnage",
+    resample_majority: "Majorité",
+    resample_center: "Centre",
+    resample_edge: "Sens. bordures",
+    resample_help: "Choix du pixel par cellule : majorité, centre, ou pondération par bordure.",
+    edge_weight: "Poids des bords",
+    edge_weight_help: "Poids des bords en mode sensible aux bordures.",
     swap_btn: "Inverser avant/après",
     palette_placeholder: "Palette hex, ex. #FF00FF #00FFFF",
     apply_palette: "Appliquer la palette",
@@ -292,6 +313,13 @@ const translations = {
     grid_label: "グリッドを表示",
     output_name: "出力名",
     quantize_label: "k色に量子化",
+    resample_label: "リサンプリング",
+    resample_majority: "多数決",
+    resample_center: "中央ピクセル",
+    resample_edge: "エッジ重み",
+    resample_help: "セル内の色の決め方: 多数決 / 中央 / エッジ重み付け。",
+    edge_weight: "エッジ重み",
+    edge_weight_help: "エッジ感度モードでの重み付け。",
     swap_btn: "前後を入れ替え",
     palette_placeholder: "Hex パレット例: #FF00FF #00FFFF",
     apply_palette: "パレットを適用",
@@ -394,6 +422,12 @@ const applyTranslations = () => {
   set(els.resampleCenter, "resample_center");
   set(els.resampleEdge, "resample_edge");
   set(els.edgeWeightLabel, "edge_weight");
+  if (els.resampleMode) {
+    els.resampleMode.title = t("resample_help");
+  }
+  if (els.edgeWeight) {
+    els.edgeWeight.title = t("edge_weight_help");
+  }
   set(els.swapBtn, "swap_btn");
   set(els.applyPalette, "apply_palette");
   set(els.snap, state.processing ? "processing" : "snap_btn");
