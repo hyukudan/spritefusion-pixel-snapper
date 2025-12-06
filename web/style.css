@@ -355,14 +355,10 @@ input[type="number"] {
   position: relative;
 }
 
-.frame-body.grid-on::after {
-  content: "";
+.grid-canvas {
   position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.25) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.25) 1px, transparent 1px);
-  background-size: 16px 16px, 16px 16px;
+  top: 0;
+  left: 0;
   pointer-events: none;
   mix-blend-mode: screen;
 }
@@ -408,7 +404,8 @@ img {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.25) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.25) 1px, transparent 1px);
-  background-size: 16px 16px, 16px 16px;
+  background-size: var(--grid-step-x, 16px) var(--grid-step-y, 16px),
+    var(--grid-step-x, 16px) var(--grid-step-y, 16px);
   pointer-events: none;
   mix-blend-mode: screen;
 }

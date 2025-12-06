@@ -105,6 +105,16 @@
               <button class="btn ghost" id="applyPalette" disabled>Apply palette</button>
             </div>
             <div class="control inline dual">
+              <label>
+                <span id="targetWidthLabel">Target width</span>
+                <input type="number" id="targetWidth" min="1" placeholder="(keep)">
+              </label>
+              <label>
+                <span id="targetHeightLabel">Target height</span>
+                <input type="number" id="targetHeight" min="1" placeholder="(keep)">
+              </label>
+            </div>
+            <div class="control inline dual">
               <div class="controls mini">
                 <label id="presetLabel">Presets</label>
                 <div class="preset-row">
@@ -149,9 +159,10 @@
               <p id="snappedTitle">Snapped</p>
               <p class="hint" id="outputMeta">Process to see the result</p>
             </div>
-            <div class="frame-body" data-frame="output">
+            <div class="frame-body" data-frame="output" data-grid="snap">
               <div class="placeholder" id="outputPlaceholder">Waiting for result…</div>
               <img id="outputPreview" class="zoomable" alt="Output preview" hidden />
+              <canvas id="gridCanvas" class="grid-canvas"></canvas>
             </div>
           </div>
           <div class="frame compare-frame">

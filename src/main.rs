@@ -20,6 +20,12 @@ pub struct Config {
     k_seed: u64,
     resample_mode: ResampleMode,
     edge_weight: f64,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
+    grid_cols: usize,
+    grid_rows: usize,
+    grid_cell_w: f64,
+    grid_cell_h: f64,
     /// Input image path only used for CLI use
     #[allow(dead_code)]
     input_path: String,
@@ -44,6 +50,12 @@ impl Default for Config {
             k_seed: 42,
             resample_mode: ResampleMode::Majority,
             edge_weight: 1.0,
+            target_width: None,
+            target_height: None,
+            grid_cols: 0,
+            grid_rows: 0,
+            grid_cell_w: 0.0,
+            grid_cell_h: 0.0,
             input_path: "samples/2/skeleton.png".to_string(),
             output_path: "samples/2/skeleton_fixed_clean2.png".to_string(),
             max_kmeans_iterations: 15,
@@ -100,6 +112,18 @@ impl From<PixelSnapperError> for wasm_bindgen::JsValue {
 
 type Result<T> = std::result::Result<T, PixelSnapperError>;
 
+#[derive(Debug, Clone)]
+pub struct GridInfo {
+    pub cols: usize,
+    pub rows: usize,
+    pub cell_w: f64,
+    pub cell_h: f64,
+    pub width: u32,
+    pub height: u32,
+    pub col_cuts: Vec<usize>,
+    pub row_cuts: Vec<usize>,
+}
+
 /// CLI entry point
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
@@ -109,6 +133,14 @@ fn main() -> Result<()> {
 }
 
 fn process_image_bytes_common(input_bytes: &[u8], config: Option<Config>) -> Result<Vec<u8>> {
+    let (bytes, _info) = process_image_bytes_with_info(input_bytes, config)?;
+    Ok(bytes)
+}
+
+fn process_image_bytes_with_info(
+    input_bytes: &[u8],
+    config: Option<Config>,
+) -> Result<(Vec<u8>, GridInfo)> {
     let config = config.unwrap_or_default();
 
     let img = image::load_from_memory(input_bytes)?;
@@ -146,16 +178,30 @@ fn process_image_bytes_common(input_bytes: &[u8], config: Option<Config>) -> Res
         &config,
     );
 
-    let output_img = resample(&quantized_img, &col_cuts, &row_cuts, &config)?;
+    let mut output_img = resample(&quantized_img, &col_cuts, &row_cuts, &config)?;
 
-    // Returns bytes for both implementations
+    if config.target_width.is_some() || config.target_height.is_some() {
+        output_img = scale_to_target(&output_img, config.target_width, config.target_height)?;
+    }
+
     let mut output_bytes = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut output_bytes);
     output_img
         .write_to(&mut cursor, image::ImageFormat::Png)
         .map_err(|e| PixelSnapperError::ImageError(e))?;
 
-    Ok(output_bytes)
+    let meta = GridInfo {
+        cols: col_cuts.len().saturating_sub(1),
+        rows: row_cuts.len().saturating_sub(1),
+        cell_w: output_img.width() as f64 / col_cuts.len().max(1) as f64,
+        cell_h: output_img.height() as f64 / row_cuts.len().max(1) as f64,
+        width: output_img.width(),
+        height: output_img.height(),
+        col_cuts,
+        row_cuts,
+    };
+
+    Ok((output_bytes, meta))
 }
 
 /// WASM entry point
@@ -165,7 +211,7 @@ pub fn process_image(
     input_bytes: &[u8],
     k_colors: Option<u32>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
-    let config = build_config(k_colors, None, None, None, None)?;
+    let config = build_config(k_colors, None, None, None, None, None, None)?;
     process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
 }
 
@@ -179,9 +225,65 @@ pub fn process_image_with(
     max_kmeans_iterations: Option<u32>,
     resample_mode: Option<String>,
     edge_weight: Option<f64>,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
-    let config = build_config(k_colors, k_seed, max_kmeans_iterations, resample_mode, edge_weight)?;
+    let config = build_config(
+        k_colors,
+        k_seed,
+        max_kmeans_iterations,
+        resample_mode,
+        edge_weight,
+        target_width,
+        target_height,
+    )?;
     process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
+}
+
+/// WASM entry point returning metadata (cols/rows/cell size)
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn process_image_with_meta(
+    input_bytes: &[u8],
+    k_colors: Option<u32>,
+    k_seed: Option<u64>,
+    max_kmeans_iterations: Option<u32>,
+    resample_mode: Option<String>,
+    edge_weight: Option<f64>,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
+) -> std::result::Result<js_sys::Array, wasm_bindgen::JsValue> {
+    let config = build_config(
+        k_colors,
+        k_seed,
+        max_kmeans_iterations,
+        resample_mode,
+        edge_weight,
+        target_width,
+        target_height,
+    )?;
+    let (bytes, info) = process_image_bytes_with_info(input_bytes, Some(config))?;
+    let arr = js_sys::Array::new();
+    let js_bytes = js_sys::Uint8Array::from(bytes.as_slice());
+    arr.push(&js_bytes);
+    arr.push(&wasm_bindgen::JsValue::from(info.cols as u32));
+    arr.push(&wasm_bindgen::JsValue::from(info.rows as u32));
+    arr.push(&wasm_bindgen::JsValue::from(info.cell_w));
+    arr.push(&wasm_bindgen::JsValue::from(info.cell_h));
+    arr.push(&wasm_bindgen::JsValue::from(info.width));
+    arr.push(&wasm_bindgen::JsValue::from(info.height));
+    // Add cut position arrays for precise grid overlay
+    let col_cuts_js = js_sys::Array::new();
+    for &cut in &info.col_cuts {
+        col_cuts_js.push(&wasm_bindgen::JsValue::from(cut as u32));
+    }
+    arr.push(&col_cuts_js);
+    let row_cuts_js = js_sys::Array::new();
+    for &cut in &info.row_cuts {
+        row_cuts_js.push(&wasm_bindgen::JsValue::from(cut as u32));
+    }
+    arr.push(&row_cuts_js);
+    Ok(arr)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -191,6 +293,8 @@ fn build_config(
     max_kmeans_iterations: Option<u32>,
     resample_mode: Option<String>,
     edge_weight: Option<f64>,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
 ) -> std::result::Result<Config, wasm_bindgen::JsValue> {
     let mut config = Config::default();
     if let Some(k) = k_colors {
@@ -226,6 +330,8 @@ fn build_config(
             config.edge_weight = weight.min(5.0);
         }
     }
+    config.target_width = target_width;
+    config.target_height = target_height;
     Ok(config)
 }
 
@@ -937,4 +1043,88 @@ fn resample(img: &RgbImage, cols: &[usize], rows: &[usize], config: &Config) -> 
     }
 
     Ok(final_img)
+}
+fn scale_to_target(
+    img: &RgbImage,
+    target_w: Option<u32>,
+    target_h: Option<u32>,
+) -> Result<RgbImage> {
+    if target_w.is_none() && target_h.is_none() {
+        return Ok(img.clone());
+    }
+    let (w, h) = img.dimensions();
+    let (new_w, new_h) = match (target_w, target_h) {
+        (Some(tw), Some(th)) => (tw, th),
+        (Some(tw), None) => {
+            if w == 0 {
+                return Err(PixelSnapperError::InvalidInput("Image width is zero".to_string()));
+            }
+            let th = ((h as u64 * tw as u64) / w as u64).max(1) as u32;
+            (tw, th)
+        }
+        (None, Some(th)) => {
+            if h == 0 {
+                return Err(PixelSnapperError::InvalidInput("Image height is zero".to_string()));
+            }
+            let tw = ((w as u64 * th as u64) / h as u64).max(1) as u32;
+            (tw, th)
+        }
+        _ => (w, h),
+    };
+    if new_w == w && new_h == h {
+        return Ok(img.clone());
+    }
+
+    let scale_x = new_w as f64 / w as f64;
+    let scale_y = new_h as f64 / h as f64;
+    let int_x = (scale_x - scale_x.round()).abs() < 0.01;
+    let int_y = (scale_y - scale_y.round()).abs() < 0.01;
+
+    if scale_x >= 1.0 && scale_y >= 1.0 && int_x && int_y {
+        return Ok(image::imageops::resize(
+            img,
+            new_w,
+            new_h,
+            image::imageops::FilterType::Nearest,
+        ));
+    }
+
+    block_vote_resize(img, new_w, new_h)
+}
+
+fn block_vote_resize(img: &RgbImage, new_w: u32, new_h: u32) -> Result<RgbImage> {
+    let mut out = RgbImage::new(new_w, new_h);
+    let (w, h) = img.dimensions();
+    if new_w == 0 || new_h == 0 || w == 0 || h == 0 {
+        return Err(PixelSnapperError::InvalidInput(
+            "Invalid dimensions during resize".to_string(),
+        ));
+    }
+    for ty in 0..new_h {
+        for tx in 0..new_w {
+            let x0 = (tx as u64 * w as u64 / new_w as u64) as u32;
+            let x1 = (((tx + 1) as u64 * w as u64 + new_w as u64 - 1) / new_w as u64)
+                .min(w as u64) as u32;
+            let y0 = (ty as u64 * h as u64 / new_h as u64) as u32;
+            let y1 = (((ty + 1) as u64 * h as u64 + new_h as u64 - 1) / new_h as u64)
+                .min(h as u64) as u32;
+            let mut counts: HashMap<[u8; 3], usize> = HashMap::new();
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let p = img.get_pixel(x, y).0;
+                    *counts.entry(p).or_insert(0) += 1;
+                }
+            }
+            let mut best = [0u8; 3];
+            let mut best_count = 0usize;
+            for (color, c) in counts.into_iter() {
+                if c > best_count {
+                    best_count = c;
+                    best = color;
+                }
+            }
+            out.put_pixel(tx, ty, Rgb(best));
+        }
+    }
+    Ok(out)
 }

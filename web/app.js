@@ -1,4 +1,4 @@
-import initWasm, { process_image_with } from "../pkg/spritefusion_pixel_snapper.js";
+import initWasm, { process_image_with, process_image_with_meta } from "../pkg/spritefusion_pixel_snapper.js";
 
 const state = {
   wasmReady: false,
@@ -12,6 +12,7 @@ const state = {
   outputStats: null,
   lastDims: null,
   diffRatio: null,
+  gridMeta: null,
   processing: false,
   batchProcessing: false,
   lang: (typeof localStorage !== "undefined" && localStorage.getItem("ps_lang")) || "en",
@@ -224,6 +225,12 @@ const els = {
   loupeToggle: document.getElementById("loupeToggle"),
   loupeLabel: document.getElementById("loupeLabel"),
   loupe: document.getElementById("loupe"),
+  targetWidth: document.getElementById("targetWidth"),
+  targetHeight: document.getElementById("targetHeight"),
+  targetWidthLabel: document.getElementById("targetWidthLabel"),
+  targetHeightLabel: document.getElementById("targetHeightLabel"),
+  gridStep: document.querySelector('[data-grid="snap"]'),
+  gridCanvas: document.getElementById("gridCanvas"),
 };
 
 const translations = {
@@ -263,6 +270,8 @@ const translations = {
     preset_applied: "Applied preset {name}.",
     palette_invalid: "Palette format not recognized.",
     palette_imported: "Palette imported.",
+    target_width: "Target width",
+    target_height: "Target height",
     diff_toggle: "Show diff mask",
     diff_info: "Diff: {pct}% pixels changed",
     loupe_label: "Loupe (1:1)",
@@ -345,6 +354,8 @@ const translations = {
     preset_applied: "Preset aplicado: {name}.",
     palette_invalid: "Formato de paleta no reconocido.",
     palette_imported: "Paleta importada.",
+    target_width: "Ancho objetivo",
+    target_height: "Alto objetivo",
     diff_toggle: "Mostrar máscara diff",
     diff_info: "Diff: {pct}% de píxeles cambiados",
     loupe_label: "Lupa (1:1)",
@@ -427,6 +438,8 @@ const translations = {
     preset_applied: "Preset appliqué : {name}.",
     palette_invalid: "Format de palette non reconnu.",
     palette_imported: "Palette importée.",
+    target_width: "Largeur cible",
+    target_height: "Hauteur cible",
     diff_toggle: "Afficher le masque diff",
     diff_info: "Diff : {pct}% de pixels modifiés",
     loupe_label: "Loupe (1:1)",
@@ -509,6 +522,10 @@ const translations = {
     preset_applied: "プリセットを適用: {name}。",
     palette_invalid: "パレットの形式が正しくありません。",
     palette_imported: "パレットを読み込みました。",
+    target_width: "目標幅",
+    target_height: "目標高さ",
+    target_width: "目標幅",
+    target_height: "目標高さ",
     diff_toggle: "差分マスク表示",
     diff_info: "差分: {pct}% のピクセルが変更",
     loupe_label: "ルーペ (1:1)",
@@ -687,6 +704,8 @@ const applyTranslations = () => {
   if (els.edgeWeight) {
     els.edgeWeight.title = t("edge_weight_help");
   }
+  set(els.targetWidthLabel, "target_width");
+  set(els.targetHeightLabel, "target_height");
   set(els.presetLabel, "preset_label");
   set(els.applyPreset, "preset_apply");
   set(els.savePreset, "preset_save");
@@ -698,6 +717,8 @@ const applyTranslations = () => {
   set(els.loupeLabel, "loupe_label");
   set(els.swapBtn, "swap_btn");
   set(els.applyPalette, "apply_palette");
+  set(els.targetWidthLabel, "target_width");
+  set(els.targetHeightLabel, "target_height");
   set(els.snap, state.processing ? "processing" : "snap_btn");
   set(els.originalTitle, "original_title");
   set(els.snappedTitle, "snapped_title");
@@ -869,6 +890,12 @@ const clearOutputPreview = () => {
   }
   els.outputPreview.hidden = true;
   els.outputPlaceholder.hidden = false;
+  // Clear grid canvas
+  if (els.gridCanvas) {
+    els.gridCanvas.hidden = true;
+    const ctx = els.gridCanvas.getContext("2d");
+    ctx.clearRect(0, 0, els.gridCanvas.width, els.gridCanvas.height);
+  }
   els.outputMeta.textContent = t("output_hint");
   els.outputPlaceholder.textContent = t("output_placeholder");
   els.download.setAttribute("disabled", "true");
@@ -906,11 +933,14 @@ const applyZoom = (factor) => {
 };
 
 const toggleGrid = (on) => {
-  document.querySelectorAll("[data-frame]").forEach((frame) => {
-    frame.classList.toggle("grid-on", on);
-  });
-  els.compareTop?.classList.toggle("grid-on", on);
-  els.compare?.classList.toggle("grid-on", on);
+  const snapGrid = document.querySelector('[data-grid="snap"]');
+  if (snapGrid) {
+    snapGrid.classList.toggle("grid-on", on);
+  }
+  // Redraw canvas grid
+  if (state.gridMeta) {
+    setGridOverlay(state.gridMeta);
+  }
 };
 
 const renderQueue = () => {
@@ -937,6 +967,73 @@ const setActiveFromQueue = async (idx) => {
   const file = state.queue[idx].file;
   await acceptFile(file, false);
   renderQueue();
+};
+
+const setGridOverlay = (meta) => {
+  if (!meta || !els.outputPreview || !els.gridStep || !els.gridCanvas) return;
+  const img = els.outputPreview;
+  const rect = img.getBoundingClientRect();
+  const containerRect = els.gridStep.getBoundingClientRect();
+
+  // Calculate actual rendered image size considering object-fit: contain
+  const naturalW = img.naturalWidth || 1;
+  const naturalH = img.naturalHeight || 1;
+  const elementW = rect.width;
+  const elementH = rect.height;
+  const scaleX = elementW / naturalW;
+  const scaleY = elementH / naturalH;
+  const scale = Math.min(scaleX, scaleY);
+  const renderedW = naturalW * scale;
+  const renderedH = naturalH * scale;
+
+  // Calculate offset from container edge to rendered image edge
+  const imgOffsetX = (elementW - renderedW) / 2;
+  const imgOffsetY = (elementH - renderedH) / 2;
+  const offsetX = (containerRect.width - elementW) / 2 + imgOffsetX;
+  const offsetY = (containerRect.height - elementH) / 2 + imgOffsetY;
+
+  // Set canvas size to match container
+  const canvas = els.gridCanvas;
+  canvas.width = containerRect.width;
+  canvas.height = containerRect.height;
+  canvas.style.width = `${containerRect.width}px`;
+  canvas.style.height = `${containerRect.height}px`;
+
+  // Draw grid lines at exact cut positions
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!els.gridToggle.checked) {
+    canvas.hidden = true;
+    return;
+  }
+  canvas.hidden = false;
+
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.lineWidth = 1;
+
+  const colCuts = meta.colCuts || [];
+  const rowCuts = meta.rowCuts || [];
+
+  // Draw vertical lines at column cut positions
+  ctx.beginPath();
+  for (const cut of colCuts) {
+    const x = offsetX + (cut / naturalW) * renderedW;
+    ctx.moveTo(x, offsetY);
+    ctx.lineTo(x, offsetY + renderedH);
+  }
+  ctx.stroke();
+
+  // Draw horizontal lines at row cut positions
+  ctx.beginPath();
+  for (const cut of rowCuts) {
+    const y = offsetY + (cut / naturalH) * renderedH;
+    ctx.moveTo(offsetX, y);
+    ctx.lineTo(offsetX + renderedW, y);
+  }
+  ctx.stroke();
+
+  state.gridMeta = meta;
 };
 
 const presetsKey = "ps_presets";
@@ -1208,23 +1305,48 @@ const processImage = async () => {
   try {
     const quantize = els.quantizeToggle.checked;
     const paletteText = (els.paletteInput.value || "").trim();
-  const customPalette = parsePaletteText(paletteText);
-  let inputBytes = state.inputBytes;
-  let k = quantize
-    ? parseInt(els.kSlider.value, 10)
-    : customPalette.length > 0
-      ? Math.max(1, customPalette.length)
-      : PASS_THROUGH_K; // passthrough
-  if (customPalette.length) {
-    // Map to the chosen palette first and skip further k-means inside WASM to preserve exact colors.
-    inputBytes = await paletteQuantize(state.inputBytes, customPalette);
-    k = PASS_THROUGH_K;
-  }
-  const seed = BigInt(els.seed.value || "0");
-  const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
-  const resampleMode = els.resampleMode.value;
-  const edgeWeight = parseFloat(els.edgeWeight.value || "0");
-  const outputBytes = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
+    const customPalette = parsePaletteText(paletteText);
+    let inputBytes = state.inputBytes;
+    let k = quantize
+      ? parseInt(els.kSlider.value, 10)
+      : customPalette.length > 0
+        ? Math.max(1, customPalette.length)
+        : PASS_THROUGH_K; // passthrough
+    if (customPalette.length) {
+      // Map to the chosen palette first and skip further k-means inside WASM to preserve exact colors.
+      inputBytes = await paletteQuantize(state.inputBytes, customPalette);
+      k = PASS_THROUGH_K;
+    }
+    const seed = BigInt(els.seed.value || "0");
+    const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
+    const resampleMode = els.resampleMode.value;
+    const edgeWeight = parseFloat(els.edgeWeight.value || "0");
+    const targetWidth = parseInt(els.targetWidth.value, 10) || undefined;
+    const targetHeight = parseInt(els.targetHeight.value, 10) || undefined;
+
+    const result = process_image_with_meta(
+      inputBytes,
+      k,
+      seed,
+      iterations,
+      resampleMode,
+      edgeWeight,
+      targetWidth,
+      targetHeight
+    );
+    const outputBytes = new Uint8Array(result[0]);
+    const meta = {
+      cols: Number(result[1]),
+      rows: Number(result[2]),
+      cellW: Number(result[3]),
+      cellH: Number(result[4]),
+      outW: Number(result[5]),
+      outH: Number(result[6]),
+      colCuts: Array.from(result[7] || []),
+      rowCuts: Array.from(result[8] || []),
+    };
+    state.gridMeta = meta;
+
     const blob = new Blob([outputBytes], { type: "image/png" });
     if (state.outputUrl) {
       URL.revokeObjectURL(state.outputUrl);
@@ -1233,7 +1355,11 @@ const processImage = async () => {
     const img = els.outputPreview;
     const kLabel = k === PASS_THROUGH_K ? t("pass_through") : k;
     const applyMeta = () => {
-      els.outputMeta.textContent = `${img.naturalWidth}x${img.naturalHeight} · k=${kLabel} · seed=${seed} · iter=${iterations}`;
+      const gridStr =
+        meta && meta.cellW && meta.cellH
+          ? ` · grid ${Math.round(meta.cellW)}x${Math.round(meta.cellH)} (${meta.cols}x${meta.rows})`
+          : "";
+      els.outputMeta.textContent = `${img.naturalWidth}x${img.naturalHeight} · k=${kLabel} · seed=${seed} · iter=${iterations}${gridStr}`;
     };
 
     const waitForImage = new Promise((resolve) => {
@@ -1253,6 +1379,10 @@ const processImage = async () => {
     } else {
       await waitForImage;
       state.lastDims = { width: img.naturalWidth, height: img.naturalHeight };
+    }
+
+    if (meta.cellW && meta.cellH) {
+      setGridOverlay(meta);
     }
 
     els.compareBase.src = state.inputUrl;
@@ -1278,7 +1408,10 @@ const processImage = async () => {
     els.download.removeAttribute("disabled");
 
     const kDisplay = kLabel;
-    setStatus(t("done_message", { k: kDisplay, seed, iter: iterations }));
+    const cellWarn =
+      meta.cellW && meta.cellH && (Math.abs(meta.cellW - Math.round(meta.cellW)) > 0.01 || Math.abs(meta.cellH - Math.round(meta.cellH)) > 0.01);
+    const warnMsg = cellWarn ? " (grid may be off due to non-integer scaling)" : "";
+    setStatus(t("done_message", { k: kDisplay, seed, iter: iterations }) + warnMsg);
   } catch (err) {
     console.error(err);
     setStatus(t("error_processing", { err: err?.message || err }));
@@ -1317,13 +1450,24 @@ const processBatch = async () => {
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
     const resampleMode = els.resampleMode.value;
     const edgeWeight = parseFloat(els.edgeWeight.value || "0");
+    const targetWidth = parseInt(els.targetWidth.value, 10) || undefined;
+    const targetHeight = parseInt(els.targetHeight.value, 10) || undefined;
     const zip = new JSZip();
     let processed = 0;
     for (const item of state.queue) {
       const bytes = new Uint8Array(await item.file.arrayBuffer());
       const inputBytes =
         customPalette.length ? await paletteQuantize(bytes, customPalette) : bytes;
-      const result = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
+      const result = process_image_with(
+        inputBytes,
+        k,
+        seed,
+        iterations,
+        resampleMode,
+        edgeWeight,
+        targetWidth,
+        targetHeight
+      );
       const base = item.file.name.replace(/\.[^.]+$/, "");
       zip.file(`${base}_snapped.png`, result);
       processed += 1;
@@ -1409,6 +1553,7 @@ const wireUI = () => {
   });
   els.zoom.addEventListener("input", (e) => {
     applyZoom(e.target.value);
+    if (state.gridMeta) setGridOverlay(state.gridMeta);
   });
   els.gridToggle.addEventListener("change", (e) => {
     toggleGrid(e.target.checked);
@@ -1416,6 +1561,9 @@ const wireUI = () => {
   window.addEventListener("resize", () => {
     if (state.lastDims) {
       sizeCompare(state.lastDims.width, state.lastDims.height);
+    }
+    if (state.gridMeta) {
+      setGridOverlay(state.gridMeta);
     }
   });
   els.swapBtn.addEventListener("click", () => {
