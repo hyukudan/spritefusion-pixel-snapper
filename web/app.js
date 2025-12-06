@@ -124,9 +124,9 @@ const renderStats = (target, hintEl, stats, labelPrefix = "") => {
     return;
   }
   const items = [
-    { label: "Resolución", value: `${stats.width} x ${stats.height}` },
-    { label: "Colores únicos", value: stats.uniqueColors },
-    { label: "Muestreo", value: `${stats.sampleSize.toLocaleString()} px` },
+    { label: "Resolution", value: `${stats.width} x ${stats.height}` },
+    { label: "Unique colors", value: stats.uniqueColors },
+    { label: "Sampled pixels", value: `${stats.sampleSize.toLocaleString()} px` },
   ];
   target.innerHTML = items
     .map(
@@ -136,7 +136,7 @@ const renderStats = (target, hintEl, stats, labelPrefix = "") => {
       </div>`
     )
     .join("");
-  hintEl.textContent = "Calculado sobre muestreo 1024px máx.";
+  hintEl.textContent = "Computed on 1024px max downsample.";
 };
 
 const renderPalette = (colors) => {
@@ -167,7 +167,7 @@ const setProcessing = (busy) => {
   els.gridToggle.disabled = disableInteractive;
   els.batch.disabled = disableInteractive || !state.queue.length;
   els.download.setAttribute("aria-busy", busy);
-  els.snap.textContent = busy ? "Procesando…" : "Snap pixels";
+  els.snap.textContent = busy ? "Processing…" : "Snap pixels";
 };
 
 const clearOutputPreview = () => {
@@ -177,7 +177,7 @@ const clearOutputPreview = () => {
   }
   els.outputPreview.hidden = true;
   els.outputPlaceholder.hidden = false;
-  els.outputMeta.textContent = "Procesa para ver el resultado";
+  els.outputMeta.textContent = "Process to see the result";
   els.download.setAttribute("disabled", "true");
   els.download.removeAttribute("href");
   els.compare.hidden = true;
@@ -390,7 +390,7 @@ const processImage = async () => {
       renderPalette(state.outputStats.topColors);
     } catch (err) {
       console.error(err);
-      setStatus("No se pudieron calcular stats del resultado.");
+      setStatus("Could not compute result stats.");
     }
 
     els.download.href = state.outputUrl;
