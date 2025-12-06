@@ -317,6 +317,9 @@ const translations = {
     wasm_failed: "Could not initialize WASM module.",
     custom_palette_applied: "Custom palette will apply on next run.",
     could_not_compute_result_stats: "Could not compute result stats.",
+    grid_regularity: "Grid regularity",
+    color_similarity: "Color similarity",
+    pixels_changed: "Pixels changed",
   },
   es: {
     lede: "Alinea pixel art desordenado a una cuadrícula nítida en tu navegador. Ajusta la paleta, compara antes/después y exporta el PNG limpio.",
@@ -401,6 +404,9 @@ const translations = {
     wasm_failed: "No se pudo inicializar el módulo WASM.",
     custom_palette_applied: "Paleta personalizada se aplicará en el siguiente run.",
     could_not_compute_result_stats: "No se pudieron calcular las stats del resultado.",
+    grid_regularity: "Regularidad del grid",
+    color_similarity: "Similitud de color",
+    pixels_changed: "Píxeles cambiados",
   },
   fr: {
     lede: "Alignez un pixel art brouillon sur une grille nette dans votre navigateur. Ajustez la palette, comparez avant/après et exportez le PNG nettoyé.",
@@ -485,6 +491,9 @@ const translations = {
     wasm_failed: "Impossible d’initialiser WASM.",
     custom_palette_applied: "Palette perso appliquée au prochain run.",
     could_not_compute_result_stats: "Impossible de calculer les stats du résultat.",
+    grid_regularity: "Régularité de la grille",
+    color_similarity: "Similarité des couleurs",
+    pixels_changed: "Pixels modifiés",
   },
   ja: {
     lede: "ブラウザ内でピクセルアートをきれいなグリッドにスナップ。パレットを調整し、ビフォー/アフターを比較してPNGを書き出せます。",
@@ -571,6 +580,9 @@ const translations = {
     wasm_failed: "WASMモジュールを初期化できませんでした。",
     custom_palette_applied: "カスタムパレットは次回適用されます。",
     could_not_compute_result_stats: "結果の統計を計算できませんでした。",
+    grid_regularity: "グリッド規則性",
+    color_similarity: "色の類似度",
+    pixels_changed: "変更ピクセル",
   },
 };
 
@@ -760,6 +772,90 @@ const toHex = (r, g, b) =>
     .join("")
     .toUpperCase();
 
+const computeGridRegularity = (meta) => {
+  if (!meta || !meta.colCuts || !meta.rowCuts) return null;
+  const colCuts = meta.colCuts;
+  const rowCuts = meta.rowCuts;
+  if (colCuts.length < 2 && rowCuts.length < 2) return null;
+
+  const computeVariance = (cuts) => {
+    if (cuts.length < 2) return 0;
+    const gaps = [];
+    for (let i = 1; i < cuts.length; i++) {
+      gaps.push(cuts[i] - cuts[i - 1]);
+    }
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    const variance = gaps.reduce((sum, g) => sum + (g - mean) ** 2, 0) / gaps.length;
+    return { mean, variance, stdDev: Math.sqrt(variance) };
+  };
+
+  const colStats = computeVariance(colCuts);
+  const rowStats = computeVariance(rowCuts);
+
+  // Regularity score: 100% = perfectly uniform, lower = more irregular
+  const colRegularity = colStats.mean > 0 ? Math.max(0, 100 - (colStats.stdDev / colStats.mean) * 100) : 100;
+  const rowRegularity = rowStats.mean > 0 ? Math.max(0, 100 - (rowStats.stdDev / rowStats.mean) * 100) : 100;
+
+  return {
+    colRegularity: colRegularity.toFixed(1),
+    rowRegularity: rowRegularity.toFixed(1),
+    avgRegularity: ((colRegularity + rowRegularity) / 2).toFixed(1),
+  };
+};
+
+const computeColorDistance = async (inputUrl, outputUrl) => {
+  if (!inputUrl || !outputUrl) return null;
+  try {
+    const [inImg, outImg] = await Promise.all([loadImage(inputUrl), loadImage(outputUrl)]);
+    const maxDim = 512;
+    const scale = Math.min(1, maxDim / Math.max(inImg.naturalWidth, inImg.naturalHeight));
+    const w = Math.max(1, Math.round(inImg.naturalWidth * scale));
+    const h = Math.max(1, Math.round(inImg.naturalHeight * scale));
+
+    const canvas1 = document.createElement("canvas");
+    const canvas2 = document.createElement("canvas");
+    canvas1.width = canvas2.width = w;
+    canvas1.height = canvas2.height = h;
+
+    const ctx1 = canvas1.getContext("2d");
+    const ctx2 = canvas2.getContext("2d");
+    ctx1.imageSmoothingEnabled = ctx2.imageSmoothingEnabled = false;
+    ctx1.drawImage(inImg, 0, 0, w, h);
+    ctx2.drawImage(outImg, 0, 0, w, h);
+
+    const data1 = ctx1.getImageData(0, 0, w, h).data;
+    const data2 = ctx2.getImageData(0, 0, w, h).data;
+
+    let totalDist = 0;
+    let pixelCount = 0;
+
+    for (let i = 0; i < data1.length; i += 4) {
+      const a1 = data1[i + 3];
+      const a2 = data2[i + 3];
+      if (a1 === 0 && a2 === 0) continue;
+
+      const dr = data1[i] - data2[i];
+      const dg = data1[i + 1] - data2[i + 1];
+      const db = data1[i + 2] - data2[i + 2];
+      totalDist += Math.sqrt(dr * dr + dg * dg + db * db);
+      pixelCount++;
+    }
+
+    const avgDist = pixelCount > 0 ? totalDist / pixelCount : 0;
+    // Max possible distance is sqrt(255^2 * 3) ≈ 441.67
+    const maxDist = Math.sqrt(255 * 255 * 3);
+    const similarity = ((1 - avgDist / maxDist) * 100).toFixed(1);
+
+    return {
+      avgDistance: avgDist.toFixed(2),
+      similarity,
+    };
+  } catch (e) {
+    console.error("Error computing color distance:", e);
+    return null;
+  }
+};
+
 const analyzeImage = async (url) => {
   const img = await loadImage(url);
   const maxDim = 1024;
@@ -794,7 +890,7 @@ const analyzeImage = async (url) => {
   };
 };
 
-const renderStats = (target, hintEl, stats, labelPrefix = "") => {
+const renderStats = (target, hintEl, stats, labelPrefix = "", qualityMetrics = null) => {
   if (!target || !hintEl) return;
   if (!stats) {
     target.innerHTML = "";
@@ -806,6 +902,20 @@ const renderStats = (target, hintEl, stats, labelPrefix = "") => {
     { label: t("unique_colors"), value: stats.uniqueColors },
     { label: t("sampled_pixels"), value: `${stats.sampleSize.toLocaleString()} px` },
   ];
+
+  // Add quality metrics if available
+  if (qualityMetrics) {
+    if (qualityMetrics.gridRegularity) {
+      items.push({ label: t("grid_regularity"), value: `${qualityMetrics.gridRegularity}%` });
+    }
+    if (qualityMetrics.colorSimilarity) {
+      items.push({ label: t("color_similarity"), value: `${qualityMetrics.colorSimilarity}%` });
+    }
+    if (qualityMetrics.pixelsChanged !== undefined) {
+      items.push({ label: t("pixels_changed"), value: `${qualityMetrics.pixelsChanged}%` });
+    }
+  }
+
   target.innerHTML = items
     .map(
       (item) => `<div class="stat-item">
@@ -1396,7 +1506,28 @@ const processImage = async () => {
 
     try {
       state.outputStats = await analyzeImage(state.outputUrl);
-      renderStats(els.outputStats, els.outputStatsHint, state.outputStats);
+
+      // Calculate quality metrics
+      const qualityMetrics = {};
+
+      // Grid regularity
+      const gridReg = computeGridRegularity(meta);
+      if (gridReg) {
+        qualityMetrics.gridRegularity = gridReg.avgRegularity;
+      }
+
+      // Color similarity
+      const colorDist = await computeColorDistance(state.inputUrl, state.outputUrl);
+      if (colorDist) {
+        qualityMetrics.colorSimilarity = colorDist.similarity;
+      }
+
+      // Pixels changed (from diff calculation)
+      if (state.diffRatio !== null) {
+        qualityMetrics.pixelsChanged = state.diffRatio.toFixed(1);
+      }
+
+      renderStats(els.outputStats, els.outputStatsHint, state.outputStats, "", qualityMetrics);
       renderPalette(state.outputStats.topColors);
     } catch (err) {
       console.error(err);
