@@ -13,22 +13,28 @@
   <div class="page">
     <header class="hero">
       <div>
-        <p class="eyebrow">Sprite Fusion Lab</p>
-        <h1>Pixel Snapper playground</h1>
-        <p class="lede">Snap messy pixel art to a crisp grid locally in your browser. Tweak the palette size, compare before/after, and export the cleaned PNG.</p>
+        <p class="eyebrow" id="heroEyebrow">Sprite Fusion Lab</p>
+        <h1 id="heroTitle">Pixel Snapper playground</h1>
+        <p class="lede" id="lede">Snap messy pixel art to a crisp grid locally in your browser. Tweak the palette size, compare before/after, and export the cleaned PNG.</p>
         <div class="hero-actions">
           <button class="btn primary" id="pick">Upload your sprite</button>
           <button class="btn ghost" id="sample">Use sample</button>
           <a class="btn quiet" id="download" download disabled>Download PNG</a>
           <button class="btn ghost" id="batch" disabled>Batch process</button>
+          <select id="langSelect" class="select">
+            <option value="en">EN</option>
+            <option value="es">ES</option>
+            <option value="fr">FR</option>
+            <option value="ja">JA</option>
+          </select>
         </div>
-        <p class="meta">WASM runs locally in your browser. Files never leave your machine.</p>
+        <p class="meta" id="meta">WASM runs locally in your browser. Files never leave your machine.</p>
       </div>
       <div class="badge">
         <span class="badge-dot"></span>
         <div>
-          <p class="badge-title">Grid-perfect output</p>
-          <p class="badge-copy">Consistent pixels and locked palette.</p>
+          <p class="badge-title" id="badgeTitle">Grid-perfect output</p>
+          <p class="badge-copy" id="badgeCopy">Consistent pixels and locked palette.</p>
         </div>
       </div>
     </header>
@@ -38,12 +44,12 @@
         <div class="panel-top">
           <div class="drop" data-drop>
             <input type="file" accept="image/png,image/jpeg" id="file" multiple hidden>
-            <p class="drop-title">Drop one or more images, or click</p>
-            <p class="drop-sub">PNG/JPEG · up to 10k x 10k</p>
+            <p class="drop-title" id="dropTitle">Drop one or more images, or click</p>
+            <p class="drop-sub" id="dropSub">PNG/JPEG · up to 10k x 10k</p>
           </div>
           <div class="controls">
             <label class="control">
-              <span>Palette (k colors): <strong id="kValue">16</strong></span>
+              <span id="paletteLabel">Palette (k colors):</span> <strong id="kValue">16</strong>
               <div class="dual">
                 <input type="range" min="4" max="128" value="16" id="kSlider">
                 <input type="number" min="4" max="128" value="16" id="kInput">
@@ -51,32 +57,32 @@
             </label>
             <div class="control inline dual">
               <label>
-                <span>Seed</span>
+                <span id="seedLabel">Seed</span>
                 <input type="number" id="seed" value="42" min="0" step="1">
               </label>
               <label>
-                <span>k-means iterations</span>
+                <span id="iterLabel">k-means iterations</span>
                 <input type="number" id="iterations" value="15" min="1" max="60">
               </label>
             </div>
             <div class="control inline dual">
               <label>
-                <span>Zoom</span>
+                <span id="zoomLabel">Zoom</span>
                 <input type="range" min="1" max="6" step="0.5" value="1" id="zoom">
               </label>
               <label class="toggle">
                 <input type="checkbox" id="gridToggle">
-                <span>Show grid overlay</span>
+                <span id="gridLabel">Show grid overlay</span>
               </label>
             </div>
             <label class="control inline">
-              <span>Output name</span>
+              <span id="outputNameLabel">Output name</span>
               <input type="text" id="outputName" value="snapped" maxlength="32">
             </label>
             <div class="control inline dual">
               <label class="toggle">
                 <input type="checkbox" id="quantizeToggle" checked>
-                <span>Quantize to k colors</span>
+                <span id="quantizeLabel">Quantize to k colors</span>
               </label>
               <button class="btn ghost" id="swapBtn" disabled>Swap before/after</button>
             </div>
@@ -94,7 +100,7 @@
         <div class="grid">
           <div class="frame">
             <div class="frame-head">
-              <p>Original</p>
+              <p id="originalTitle">Original</p>
               <p class="hint" id="inputMeta">No image yet</p>
             </div>
             <div class="frame-body" data-frame="input">
@@ -104,7 +110,7 @@
           </div>
           <div class="frame">
             <div class="frame-head">
-              <p>Snapped</p>
+              <p id="snappedTitle">Snapped</p>
               <p class="hint" id="outputMeta">Process to see the result</p>
             </div>
             <div class="frame-body" data-frame="output">
@@ -114,8 +120,8 @@
           </div>
           <div class="frame compare-frame">
             <div class="frame-head">
-              <p>Compare</p>
-              <p class="hint">Drag the slider</p>
+              <p id="compareTitle">Compare</p>
+              <p class="hint" id="compareHint">Drag the slider</p>
             </div>
             <div class="frame-body compare-body">
               <div class="placeholder" id="comparePlaceholder">Process to compare</div>
@@ -133,14 +139,14 @@
         <div class="stats">
           <div class="stat-card">
             <div class="stat-head">
-              <p class="stat-title">Original</p>
+              <p class="stat-title" id="statsOriginalTitle">Original</p>
               <p class="hint" id="inputStatsHint">—</p>
             </div>
             <div class="stat-grid" id="inputStats"></div>
           </div>
           <div class="stat-card">
             <div class="stat-head">
-              <p class="stat-title">Snapped</p>
+              <p class="stat-title" id="statsSnappedTitle">Snapped</p>
               <p class="hint" id="outputStatsHint">Process to see stats</p>
             </div>
             <div class="stat-grid" id="outputStats"></div>
