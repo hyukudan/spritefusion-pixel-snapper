@@ -224,6 +224,10 @@ const els = {
   loupeToggle: document.getElementById("loupeToggle"),
   loupeLabel: document.getElementById("loupeLabel"),
   loupe: document.getElementById("loupe"),
+  targetWidth: document.getElementById("targetWidth"),
+  targetHeight: document.getElementById("targetHeight"),
+  targetWidthLabel: document.getElementById("targetWidthLabel"),
+  targetHeightLabel: document.getElementById("targetHeightLabel"),
 };
 
 const translations = {
@@ -263,6 +267,8 @@ const translations = {
     preset_applied: "Applied preset {name}.",
     palette_invalid: "Palette format not recognized.",
     palette_imported: "Palette imported.",
+    target_width: "Target width",
+    target_height: "Target height",
     diff_toggle: "Show diff mask",
     diff_info: "Diff: {pct}% pixels changed",
     loupe_label: "Loupe (1:1)",
@@ -345,6 +351,8 @@ const translations = {
     preset_applied: "Preset aplicado: {name}.",
     palette_invalid: "Formato de paleta no reconocido.",
     palette_imported: "Paleta importada.",
+    target_width: "Ancho objetivo",
+    target_height: "Alto objetivo",
     diff_toggle: "Mostrar máscara diff",
     diff_info: "Diff: {pct}% de píxeles cambiados",
     loupe_label: "Lupa (1:1)",
@@ -427,6 +435,8 @@ const translations = {
     preset_applied: "Preset appliqué : {name}.",
     palette_invalid: "Format de palette non reconnu.",
     palette_imported: "Palette importée.",
+    target_width: "Largeur cible",
+    target_height: "Hauteur cible",
     diff_toggle: "Afficher le masque diff",
     diff_info: "Diff : {pct}% de pixels modifiés",
     loupe_label: "Loupe (1:1)",
@@ -509,6 +519,8 @@ const translations = {
     preset_applied: "プリセットを適用: {name}。",
     palette_invalid: "パレットの形式が正しくありません。",
     palette_imported: "パレットを読み込みました。",
+    target_width: "目標幅",
+    target_height: "目標高さ",
     diff_toggle: "差分マスク表示",
     diff_info: "差分: {pct}% のピクセルが変更",
     loupe_label: "ルーペ (1:1)",
@@ -698,6 +710,8 @@ const applyTranslations = () => {
   set(els.loupeLabel, "loupe_label");
   set(els.swapBtn, "swap_btn");
   set(els.applyPalette, "apply_palette");
+  set(els.targetWidthLabel, "target_width");
+  set(els.targetHeightLabel, "target_height");
   set(els.snap, state.processing ? "processing" : "snap_btn");
   set(els.originalTitle, "original_title");
   set(els.snappedTitle, "snapped_title");
@@ -1207,7 +1221,7 @@ const processImage = async () => {
   setProcessing(true);
   try {
     const quantize = els.quantizeToggle.checked;
-    const paletteText = (els.paletteInput.value || "").trim();
+  const paletteText = (els.paletteInput.value || "").trim();
   const customPalette = parsePaletteText(paletteText);
   let inputBytes = state.inputBytes;
   let k = quantize
@@ -1224,7 +1238,18 @@ const processImage = async () => {
   const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
   const resampleMode = els.resampleMode.value;
   const edgeWeight = parseFloat(els.edgeWeight.value || "0");
-  const outputBytes = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
+  const targetWidth = parseInt(els.targetWidth.value, 10) || undefined;
+  const targetHeight = parseInt(els.targetHeight.value, 10) || undefined;
+  const outputBytes = process_image_with(
+    inputBytes,
+    k,
+    seed,
+    iterations,
+    resampleMode,
+    edgeWeight,
+    targetWidth,
+    targetHeight
+  );
     const blob = new Blob([outputBytes], { type: "image/png" });
     if (state.outputUrl) {
       URL.revokeObjectURL(state.outputUrl);
@@ -1317,13 +1342,24 @@ const processBatch = async () => {
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
     const resampleMode = els.resampleMode.value;
     const edgeWeight = parseFloat(els.edgeWeight.value || "0");
+    const targetWidth = parseInt(els.targetWidth.value, 10) || undefined;
+    const targetHeight = parseInt(els.targetHeight.value, 10) || undefined;
     const zip = new JSZip();
     let processed = 0;
     for (const item of state.queue) {
       const bytes = new Uint8Array(await item.file.arrayBuffer());
       const inputBytes =
         customPalette.length ? await paletteQuantize(bytes, customPalette) : bytes;
-      const result = process_image_with(inputBytes, k, seed, iterations, resampleMode, edgeWeight);
+      const result = process_image_with(
+        inputBytes,
+        k,
+        seed,
+        iterations,
+        resampleMode,
+        edgeWeight,
+        targetWidth,
+        targetHeight
+      );
       const base = item.file.name.replace(/\.[^.]+$/, "");
       zip.file(`${base}_snapped.png`, result);
       processed += 1;

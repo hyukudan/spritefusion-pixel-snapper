@@ -20,6 +20,8 @@ pub struct Config {
     k_seed: u64,
     resample_mode: ResampleMode,
     edge_weight: f64,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
     /// Input image path only used for CLI use
     #[allow(dead_code)]
     input_path: String,
@@ -44,6 +46,8 @@ impl Default for Config {
             k_seed: 42,
             resample_mode: ResampleMode::Majority,
             edge_weight: 1.0,
+            target_width: None,
+            target_height: None,
             input_path: "samples/2/skeleton.png".to_string(),
             output_path: "samples/2/skeleton_fixed_clean2.png".to_string(),
             max_kmeans_iterations: 15,
@@ -146,7 +150,11 @@ fn process_image_bytes_common(input_bytes: &[u8], config: Option<Config>) -> Res
         &config,
     );
 
-    let output_img = resample(&quantized_img, &col_cuts, &row_cuts, &config)?;
+    let mut output_img = resample(&quantized_img, &col_cuts, &row_cuts, &config)?;
+
+    if config.target_width.is_some() || config.target_height.is_some() {
+        output_img = scale_to_target(&output_img, config.target_width, config.target_height)?;
+    }
 
     // Returns bytes for both implementations
     let mut output_bytes = Vec::new();
@@ -165,7 +173,7 @@ pub fn process_image(
     input_bytes: &[u8],
     k_colors: Option<u32>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
-    let config = build_config(k_colors, None, None, None, None)?;
+    let config = build_config(k_colors, None, None, None, None, None, None)?;
     process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
 }
 
@@ -179,8 +187,18 @@ pub fn process_image_with(
     max_kmeans_iterations: Option<u32>,
     resample_mode: Option<String>,
     edge_weight: Option<f64>,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
 ) -> std::result::Result<Vec<u8>, wasm_bindgen::JsValue> {
-    let config = build_config(k_colors, k_seed, max_kmeans_iterations, resample_mode, edge_weight)?;
+    let config = build_config(
+        k_colors,
+        k_seed,
+        max_kmeans_iterations,
+        resample_mode,
+        edge_weight,
+        target_width,
+        target_height,
+    )?;
     process_image_bytes_common(input_bytes, Some(config)).map_err(|e| wasm_bindgen::JsValue::from(e))
 }
 
@@ -191,6 +209,8 @@ fn build_config(
     max_kmeans_iterations: Option<u32>,
     resample_mode: Option<String>,
     edge_weight: Option<f64>,
+    target_width: Option<u32>,
+    target_height: Option<u32>,
 ) -> std::result::Result<Config, wasm_bindgen::JsValue> {
     let mut config = Config::default();
     if let Some(k) = k_colors {
@@ -226,6 +246,8 @@ fn build_config(
             config.edge_weight = weight.min(5.0);
         }
     }
+    config.target_width = target_width;
+    config.target_height = target_height;
     Ok(config)
 }
 
@@ -937,4 +959,41 @@ fn resample(img: &RgbImage, cols: &[usize], rows: &[usize], config: &Config) -> 
     }
 
     Ok(final_img)
+}
+fn scale_to_target(
+    img: &RgbImage,
+    target_w: Option<u32>,
+    target_h: Option<u32>,
+) -> Result<RgbImage> {
+    if target_w.is_none() && target_h.is_none() {
+        return Ok(img.clone());
+    }
+    let (w, h) = img.dimensions();
+    let (new_w, new_h) = match (target_w, target_h) {
+        (Some(tw), Some(th)) => (tw, th),
+        (Some(tw), None) => {
+            if w == 0 {
+                return Err(PixelSnapperError::InvalidInput("Image width is zero".to_string()));
+            }
+            let th = ((h as u64 * tw as u64) / w as u64).max(1) as u32;
+            (tw, th)
+        }
+        (None, Some(th)) => {
+            if h == 0 {
+                return Err(PixelSnapperError::InvalidInput("Image height is zero".to_string()));
+            }
+            let tw = ((w as u64 * th as u64) / h as u64).max(1) as u32;
+            (tw, th)
+        }
+        _ => (w, h),
+    };
+    if new_w == w && new_h == h {
+        return Ok(img.clone());
+    }
+    Ok(image::imageops::resize(
+        img,
+        new_w,
+        new_h,
+        image::imageops::FilterType::Nearest,
+    ))
 }
