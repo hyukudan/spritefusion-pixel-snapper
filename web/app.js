@@ -201,6 +201,7 @@ const translations = {
     palette_import: "Import",
     palette_export: "Export",
     preset_saved: "Preset saved.",
+    preset_applied: "Applied preset {name}.",
     palette_invalid: "Palette format not recognized.",
     palette_imported: "Palette imported.",
     diff_toggle: "Show diff mask",
@@ -282,6 +283,7 @@ const translations = {
     palette_import: "Importar",
     palette_export: "Exportar",
     preset_saved: "Preset guardado.",
+    preset_applied: "Preset aplicado: {name}.",
     palette_invalid: "Formato de paleta no reconocido.",
     palette_imported: "Paleta importada.",
     diff_toggle: "Mostrar máscara diff",
@@ -363,6 +365,7 @@ const translations = {
     palette_import: "Importer",
     palette_export: "Exporter",
     preset_saved: "Preset enregistré.",
+    preset_applied: "Preset appliqué : {name}.",
     palette_invalid: "Format de palette non reconnu.",
     palette_imported: "Palette importée.",
     diff_toggle: "Afficher le masque diff",
@@ -444,6 +447,7 @@ const translations = {
     palette_import: "インポート",
     palette_export: "エクスポート",
     preset_saved: "プリセットを保存しました。",
+    preset_applied: "プリセットを適用: {name}。",
     palette_invalid: "パレットの形式が正しくありません。",
     palette_imported: "パレットを読み込みました。",
     diff_toggle: "差分マスク表示",
@@ -874,6 +878,7 @@ const applyPreset = (name) => {
     els.applyPalette.disabled = false;
   }
   refreshResampleUI();
+  setStatus(t("preset_applied", { name }));
 };
 
 const handleSavePreset = () => {
@@ -1091,18 +1096,22 @@ const processImage = async () => {
   setProcessing(true);
   try {
     const quantize = els.quantizeToggle.checked;
-    const paletteText = (els.paletteInput.value || "").trim();
-    const customPalette = paletteText
-      ? paletteText
-          .split(/\s+/)
-          .map((hex) => hex.replace("#", ""))
-          .filter((h) => /^[0-9a-fA-F]{6}$/.test(h))
-      : [];
-    const k = quantize
-      ? parseInt(els.kSlider.value, 10)
-      : customPalette.length > 0
-        ? Math.max(1, customPalette.length)
-        : PASS_THROUGH_K; // passthrough
+  const paletteText = (els.paletteInput.value || "").trim();
+  const customPalette = paletteText
+    ? paletteText
+        .split(/\s+/)
+        .map((hex) => hex.replace("#", ""))
+        .filter((h) => /^[0-9a-fA-F]{6}$/.test(h))
+    : [];
+  let k = quantize
+    ? parseInt(els.kSlider.value, 10)
+    : customPalette.length > 0
+      ? Math.max(1, customPalette.length)
+      : PASS_THROUGH_K; // passthrough
+  if (customPalette.length && quantize) {
+    // If a custom palette is provided and quantization is on, force k to palette size
+    k = customPalette.length;
+  }
     const seed = BigInt(els.seed.value || "0");
     const iterations = Math.max(1, parseInt(els.iterations.value, 10) || 1);
     const resampleMode = els.resampleMode.value;
